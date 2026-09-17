@@ -141,7 +141,7 @@ elif st.session_state.current_page == "cameras":
     with col3:
         camera_url = "http://10.76.32.104"
         st.link_button(
-            label="🎥 Open Live Camera Feed", 
+            label="🎥 Developmental Instrument", 
             url=camera_url, 
             type="primary", 
             use_container_width=True
