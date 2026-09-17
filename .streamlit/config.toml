@@ -1,5 +1,5 @@
 [theme]
-primaryColor = "#0066cc"
-backgroundColor = "#ffffff"
-secondaryBackgroundColor = "#f4f7f6"
-textColor = "#222222"
+primaryColor = "#003366"  # Deep clinical navy blue
+backgroundColor = "#ffffff"  # Clean white background
+secondaryBackgroundColor = "#f4f7f6"  # Light grey sidebar background
+textColor = "#111111"  # Dark text for high contrast
