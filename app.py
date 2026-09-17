@@ -128,12 +128,19 @@ elif st.session_state.current_page == "cameras":
         st.rerun()
 
     st.title("📷 Integrated Lab Cameras & Scanning")
-    st.write("Use your computer or system camera feed below to register plates or check for physical run artifacts.")
-
-    # Native Streamlit camera component
-    picture = st.camera_input("Take a snapshot of your plate barcode or well configuration")
+    st.write("Streaming live feeds from internal lab network components.")
     
-    if picture:
-        st.image(picture, caption="Captured Image Preview")
-        st.success("Image successfully cataloged! (Ready to push to image analytics repository)")
+    # Visual Status Tag
+    st.success("🔗 Connected to Automation Deck Camera (IP: 10.76.32.104)")
+
+    # 🎥 EMBED THE NETWORK CAMERA STREAM
+    # Most network cameras serve an HTTP MJPEG feed. If your camera page requires 
+    # a specific subpath (like /video or /stream.mjpg), add it to the end of the IP.
+    camera_url = "http://10.76.32.104"
+    
+    # We use an iframe component to cleanly project the camera stream inside your dashboard
+    st.components.v1.iframe(src=camera_url, height=500, scrolling=True)
+    
+    st.write("---")
+    st.info("💡 Note: To view this live feed, your computer must be connected to the company's internal network or VPN.")
 
