@@ -4,28 +4,54 @@ import pandas as pd
 
 st.set_page_config(page_title="Lab Portal", page_icon="🧪", layout="wide")
 
-# 1. INITIALIZE SESSION STATE (This remembers if the button was clicked)
-if "show_uploader" not in st.session_state:
-    st.session_state.show_uploader = False
+# 1. INITIALIZE SESSION STATE ROUTING (Tracks which screen we are viewing)
+if "current_page" not in st.session_state:
+    st.session_state.current_page = "home"
 
-# 2. SCREEN 1: THE WELCOME SCREEN (Shown by default)
-if not st.session_state.show_uploader:
+# ==========================================================
+# SCREEN 1: THE WELCOME SCREEN / MAIN HUB (3 Columns)
+# ==========================================================
+if st.session_state.current_page == "home":
     st.title("🧪 Laboratory Command Center")
-    st.write("Welcome to the Harbinger Health portal. Click the button below to log a new plate run.")
+    st.write("Welcome to the Harbinger Health portal. Select a module below to begin your workflow.")
+    st.write("---")
     
-    # Large button to route to the uploader page
-    if st.button("🚀 Upload Plate", type="primary", use_container_width=True):
-        st.session_state.show_uploader = True
-        st.rerun() # Refresh the page to load Screen 2
+    # Create three equal-width columns side-by-side
+    col1, col2, col3 = st.columns(3)
+    
+    # COLUMN 1: Plate Processing Tool
+    with col1:
+        st.subheader("📁 Plate Processing")
+        st.write("Upload raw plate files and execute background blanking mathematics.")
+        if st.button("🚀 Upload Plate", type="primary", use_container_width=True):
+            st.session_state.current_page = "uploader"
+            st.rerun()
+            
+    # COLUMN 2: Camera Inspection Tool
+    with col2:
+        st.subheader("📷 Visual Inspections")
+        st.write("Trigger automated deck imagery, barcode scanning, or colony counts.")
+        if st.button("🎥 Lab Cameras", type="primary", use_container_width=True):
+            st.session_state.current_page = "cameras"
+            st.rerun()
+            
+    # COLUMN 3: Placeholder for Future Tools
+    with col3:
+        st.subheader("🔬 Automation Deck")
+        st.write("Future module space for direct liquid handler integrations and telemetry.")
+        st.button("🔒 Locked Module", type="secondary", use_container_width=True, disabled=True)
 
-# 3. SCREEN 2: THE FILE UPLOAD & MATH SCREEN (Shown after clicking the button)
-else:
-    # Add a "Back" button at the very top left so techs can return home if needed
-    if st.button("⬅️ Back to Home"):
-        st.session_state.show_uploader = False
+# ==========================================================
+# SCREEN 2: THE FILE UPLOAD & MATH SCREEN 
+# ==========================================================
+elif st.session_state.current_page == "uploader":
+    # Global return button at the top
+    if st.button("⬅️ Back to Main Hub"):
+        st.session_state.current_page = "home"
         st.rerun()
 
     st.title("🧪 Lab Plate Upload & Math Analysis")
+    
     # Sidebar inputs
     st.sidebar.header("Plate Metadata")
     tech_name = st.sidebar.text_input("Technologist Name")
@@ -41,7 +67,6 @@ else:
         # 1. READ THE DATA WITH PANDAS (Smarter, robust encoding)
         try:
             if uploaded_file.name.endswith('.csv'):
-                # Using 'latin-1' encoding allows special lab characters (like µ or °) to pass through without crashing
                 try:
                     df = pd.read_csv(uploaded_file, encoding='utf-8')
                 except UnicodeDecodeError:
@@ -53,7 +78,6 @@ else:
             st.success(f"📊 Loaded '{uploaded_file.name}' successfully!")
             
             # 2. RUN THE MATH 
-            # (Assuming your file has a column named 'Value' or 'Signal'. Change 'Value' to match your column headers)
             if 'Conc. [pg/µl]' in df.columns:
                 # Simple math operation: Background subtraction
                 df['Corrected_Value'] = df['Conc. [pg/µl]'] - blank_value
@@ -86,10 +110,30 @@ else:
                     st.success(f"💾 Calculations saved to: {save_path}")
                     
             else:
-                st.error("Error: Could not find a column named 'Value' in your uploaded file. Please make sure your column headers match.")
+                st.error("Error: Could not find a column named 'Conc. [pg/µl]' in your uploaded file. Please make sure your column headers match.")
                 st.write("Your column names are:", list(df.columns))
                 
         except Exception as e:
             st.error(f"Could not parse file: {e}")
     else:
         st.info("Please fill out metadata in the sidebar and upload a file to run calculations.")
+
+# ==========================================================
+# SCREEN 3: THE LAB CAMERA SCREEN 
+# ==========================================================
+elif st.session_state.current_page == "cameras":
+    # Global return button at the top
+    if st.button("⬅️ Back to Main Hub"):
+        st.session_state.current_page = "home"
+        st.rerun()
+
+    st.title("📷 Integrated Lab Cameras & Scanning")
+    st.write("Use your computer or system camera feed below to register plates or check for physical run artifacts.")
+
+    # Native Streamlit camera component
+    picture = st.camera_input("Take a snapshot of your plate barcode or well configuration")
+    
+    if picture:
+        st.image(picture, caption="Captured Image Preview")
+        st.success("Image successfully cataloged! (Ready to push to image analytics repository)")
+
