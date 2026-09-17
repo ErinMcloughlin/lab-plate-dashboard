@@ -14,7 +14,7 @@ if not st.session_state.show_uploader:
     st.write("Welcome to the Harbinger Health portal. Click the button below to log a new plate run.")
     
     # Large button to route to the uploader page
-    if st.button("🚀 Upload Plate", type="secondary", use_container_width=True):
+    if st.button("🚀 Upload Plate", type="primary", use_container_width=True):
         st.session_state.show_uploader = True
         st.rerun() # Refresh the page to load Screen 2
 
