@@ -11,10 +11,10 @@ if "show_uploader" not in st.session_state:
 # 2. SCREEN 1: THE WELCOME SCREEN (Shown by default)
 if not st.session_state.show_uploader:
     st.title("🧪 Laboratory Command Center")
-    st.write("Welcome to the Harbinger Health plate processing portal. Click the button below to log a new plate run.")
+    st.write("Welcome to the Harbinger Health portal. Click the button below to log a new plate run.")
     
     # Large button to route to the uploader page
-    if st.button("🚀 Upload Plate", type="primary", use_container_width=True):
+    if st.button("🚀 Upload Plate", type="secoundary", use_container_width=True):
         st.session_state.show_uploader = True
         st.rerun() # Refresh the page to load Screen 2
 
