@@ -35,11 +35,22 @@ if st.session_state.current_page == "home":
             st.session_state.current_page = "cameras"
             st.rerun()
             
-    # COLUMN 3: Placeholder for Future Tools
+    # COLUMN 3: Automation Deck (Linked to Venus Portal)
     with col3:
         st.subheader("🔬 Automation Deck")
-        st.write("Future module space for direct liquid handler integrations and telemetry.")
-        st.button("🔒 Locked Module", type="secondary", use_container_width=True, disabled=True)
+        st.write("Direct integration matrix with the company's Hamilton Venus automation pipelines.")
+        
+        # Link button to jump out to Venus directly
+        st.link_button("🌐 Open Venus Portal", "https://venus.harbinger-health.net/", type="secondary", use_container_width=True)
+        
+        st.write("---")
+        # 📊 LIVE PREVIEW EMBED
+        # Since Venus uses a secure 'https' address, modern browsers WILL allow you 
+        # to frame the login screen or dashboard directly on your webpage layout!
+        try:
+            st.components.v1.iframe(src="https://venus.harbinger-health.net/", height=350, scrolling=True)
+        except Exception as e:
+            st.caption("Unable to load embedded Venus frame view.")
 
 # ==========================================================
 # SCREEN 2: THE FILE UPLOAD & MATH SCREEN 
