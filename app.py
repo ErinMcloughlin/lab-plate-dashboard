@@ -40,7 +40,7 @@ if st.session_state.current_page == "home":
         st.subheader("🔬 Automation Deck")
         st.write("Direct integration matrix with the company's Hamilton Venus automation pipelines.")
         
-        # This clean primary button handles everything cleanly by routing techs in a new window
+        # 🎨 SWITCHED TO TYPE="PRIMARY" TO MATCH NAVY BLUE / WHITE WRITING THEME
         st.link_button(
             label="🌐 Open Venus Portal", 
             url="https://venus.harbinger-health.net/", 
@@ -49,9 +49,11 @@ if st.session_state.current_page == "home":
         )
         
         st.write("---")
-        # Visual Helper Tag for the Technologists
-        st.info("🔒 Secure Internal Subsystem. Click the action button above to sign in via the main network cluster.")
-
+        # Live preview embed matrix
+        try:
+            st.components.v1.iframe(src="https://venus.harbinger-health.net/", height=350, scrolling=True)
+        except Exception as e:
+            st.caption("Unable to load embedded Venus frame view.")
 
 # ==========================================================
 # SCREEN 2: THE FILE UPLOAD & MATH SCREEN 
