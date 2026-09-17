@@ -122,25 +122,25 @@ elif st.session_state.current_page == "uploader":
 # SCREEN 3: THE LAB CAMERA SCREEN 
 # ==========================================================
 elif st.session_state.current_page == "cameras":
-    # Global return button at the top
     if st.button("⬅️ Back to Main Hub"):
         st.session_state.current_page = "home"
         st.rerun()
 
     st.title("📷 Integrated Lab Cameras & Scanning")
-    st.write("Streaming live feeds from internal lab network components.")
+    st.write("Access your automation deck camera feed below.")
     
-    # Visual Status Tag
-    st.success("🔗 Connected to Automation Deck Camera (IP: 10.76.32.104)")
-
-    # 🎥 EMBED THE NETWORK CAMERA STREAM
-    # Most network cameras serve an HTTP MJPEG feed. If your camera page requires 
-    # a specific subpath (like /video or /stream.mjpg), add it to the end of the IP.
+    st.info("💡 Note: To access this feed, your computer must be connected to the company's internal network or VPN.")
+    
+    # 🎥 LAUNCH CAMERA IN NEW TAB (Bypasses the 'refuses to connect' error)
     camera_url = "http://10.76.32.104"
     
-    # We use an iframe component to cleanly project the camera stream inside your dashboard
-    st.components.v1.iframe(src=camera_url, height=500, scrolling=True)
+    # This creates a clean, large button that securely links straight to the camera console
+    st.link_button("🎥 Open Live Camera Feed (IP: 10.76.32.104)", camera_url, type="primary", use_container_width=True)
     
     st.write("---")
-    st.info("💡 Note: To view this live feed, your computer must be connected to the company's internal network or VPN.")
-
+    st.write("📊 **Troubleshooting Steps if the camera page won't load:**")
+    st.markdown("""
+    1. Confirm you are on the **Harbinger Health internal Wi-Fi** or corporate VPN.
+    2. Check that the camera hardware box is powered on.
+    3. If the camera page asks for a specific login or port, contact your automation engineer.
+    """)
