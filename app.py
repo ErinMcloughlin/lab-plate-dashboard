@@ -40,17 +40,21 @@ if st.session_state.current_page == "home":
         st.subheader("🔬 Automation Deck")
         st.write("Direct integration matrix with the company's Hamilton Venus automation pipelines.")
         
-        # Link button to jump out to Venus directly
-        st.link_button("🌐 Open Venus Portal", "https://venus.harbinger-health.net/", type="secondary", use_container_width=True)
+        # 🎨 SWITCHED TO TYPE="PRIMARY" TO MATCH NAVY BLUE / WHITE WRITING THEME
+        st.link_button(
+            label="🌐 Open Venus Portal", 
+            url="https://harbinger-health.net", 
+            type="primary", 
+            use_container_width=True
+        )
         
         st.write("---")
-        # 📊 LIVE PREVIEW EMBED
-        # Since Venus uses a secure 'https' address, modern browsers WILL allow you 
-        # to frame the login screen or dashboard directly on your webpage layout!
+        # Live preview embed matrix
         try:
-            st.components.v1.iframe(src="https://venus.harbinger-health.net/", height=350, scrolling=True)
+            st.components.v1.iframe(src="https://harbinger-health.net", height=350, scrolling=True)
         except Exception as e:
             st.caption("Unable to load embedded Venus frame view.")
+
 
 # ==========================================================
 # SCREEN 2: THE FILE UPLOAD & MATH SCREEN 
