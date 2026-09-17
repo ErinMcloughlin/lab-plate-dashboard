@@ -127,20 +127,33 @@ elif st.session_state.current_page == "cameras":
         st.rerun()
 
     st.title("📷 Integrated Lab Cameras & Scanning")
-    st.write("Access your automation deck camera feed below.")
-    
-    st.info("💡 Note: To access this feed, your computer must be connected to the company's internal network or VPN.")
-    
-    # 🎥 LAUNCH CAMERA IN NEW TAB (Bypasses the 'refuses to connect' error)
-    camera_url = "http://10.76.32.104"
-    
-    # This creates a clean, large button that securely links straight to the camera console
-    st.link_button("🎥 Open Live Camera Feed (IP: 10.76.32.104)", camera_url, type="primary", use_container_width=True)
+    st.write("Streaming live imagery from internal automation deck network elements.")
     
     st.write("---")
-    st.write("📊 **Troubleshooting Steps if the camera page won't load:**")
-    st.markdown("""
-    1. Confirm you are on the **Harbinger Health internal Wi-Fi** or corporate VPN.
-    2. Check that the camera hardware box is powered on.
-    3. If the camera page asks for a specific login or port, contact your automation engineer.
-    """)
+    
+    # Target URL of your lab camera's image/MJPEG video frame endpoint
+    # Note: Most IP cameras serve a constant snapshot image or video feed at an endpoint 
+    # like /snapshot.jpg, /image.jpg, /video, or /stream.mjpg. Update if yours requires a path!
+    camera_url = "http://10.76.32.104"
+    
+    # 🎥 DISPLAY LIVE PREVIEW DIRECTLY ON SCREEN USING THE BACKEND RELAY
+    try:
+        # We tell the Python server to download the image box data directly over your building's LAN
+        import urllib.request
+        
+        # Pull a clean snapshot directly from the camera
+        with urllib.request.urlopen(camera_url, timeout=3) as response:
+            image_bytes = response.read()
+            
+        # Draw the visual right onto your web link workspace page securely!
+        st.image(image_bytes, caption="Live Automation Deck Capture (10.76.32.104)", use_container_width=True)
+        
+        # Provide an on-screen trigger button so technologists can refresh the stream snapshot manually
+        if st.button("🔄 Refresh Live Feed View"):
+            st.rerun()
+            
+    except Exception as e:
+        st.error("❌ Unable to stream camera preview directly onto dashboard container.")
+        st.warning("💡 To see this feed, ensure you are physically connected to the company Wi-Fi network and that the camera path is active.")
+        st.write(f"Technical error context: {e}")
+
