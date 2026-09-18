@@ -64,7 +64,7 @@ if st.session_state.current_page == "home":
         
         st.write("---")
         try:
-            st.components.v1.iframe(src="https://harbinger-health.net", height=350, scrolling=True)
+            st.components.v1.iframe(src="https://venus.harbinger-health.net/", height=350, scrolling=True)
         except Exception as e:
             st.caption("Unable to load embedded Venus frame view.")
 
