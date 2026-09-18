@@ -63,15 +63,15 @@ if st.session_state.current_page == "home":
             st.caption("Unable to load embedded Venus frame view.")
 
 # ==========================================================
-# SCREEN: TUBE HEMOLYSIS INSPECTION SCREEN (ZIP AUTOMATION)
+# SCREEN: TUBE INSPECTION SCREEN (ZIP AUTOMATION W/ VOLUME)
 # ==========================================================
 elif st.session_state.current_page == "hemolysis_inspector":
     if st.button("⬅️ Back to Main Hub"):
         st.session_state.current_page = "home"
         st.rerun()
 
-    st.title("🩸 Tube Hemolysis Classification")
-    st.write("Upload your zipped image folder to instantly extract and scan individual blood tubes.")
+    st.title("🩸 Tube Hemolysis & Volume Classification")
+    st.write("Upload your zipped image folder to instantly extract, check for hemolysis, and estimate liquid volume.")
     
     st.info(
         "💡 **Zip Target:**\n"
@@ -80,7 +80,7 @@ elif st.session_state.current_page == "hemolysis_inspector":
     
     st.write("---")
     
-    # Updated file uploader targeting single zip package
+    # File uploader targeting single zip package
     uploaded_zip = st.file_uploader(
         "Select or Drag and Drop the zipped folder:", 
         type=["zip"], 
@@ -91,11 +91,9 @@ elif st.session_state.current_page == "hemolysis_inspector":
         try:
             results_data = []
             valid_extensions = ('.png', '.jpg', '.jpeg', '.tiff', '.bmp')
-            image_files_found = []
             
             # Open the zip archive out of memory stream
             with zipfile.ZipFile(uploaded_zip) as z:
-                # Filter for valid images and skip internal hidden operating system files
                 all_files = z.namelist()
                 image_paths = [f for f in all_files if f.lower().endswith(valid_extensions) and not f.startswith('__MACOSX') and not os.path.basename(f).startswith('.')]
                 
@@ -107,23 +105,28 @@ elif st.session_state.current_page == "hemolysis_inspector":
                     grid_cols = st.columns(4)
                     
                     for idx, img_path in enumerate(image_paths):
-                        # Extract just the file identifier name (excluding folder prefixes)
                         filename = os.path.basename(img_path)
-                        
-                        # Read the raw byte data of the individual file out of the zip
                         img_bytes = z.read(img_path)
                         
-                        # Simulated Hemolysis prediction rule base
+                        # 1. Simulated Hemolysis prediction rule base
                         is_hemolyzed = "Yes" if (idx % 3 == 0 or "hem" in filename.lower()) else "No"
+                        
+                        # 2. Simulated Liquid Volume calculation matrix (Placeholder logic simulating mL extraction)
+                        # (This simulates measuring the pixel height of the liquid column relative to the tube bounds)
+                        simulated_ml = round(1.2 + (idx * 0.45) % 3.8, 2) 
                         
                         results_data.append({
                             "Sample Identification (Filename)": filename,
-                            "Hemolyzed": is_hemolyzed
+                            "Hemolyzed": is_hemolyzed,
+                            "Estimated Volume (mL)": simulated_ml
                         })
                         
                         # Display thumbnail card grid matching filename layout
                         with grid_cols[idx % 4]:
                             st.image(img_bytes, caption=filename, use_container_width=True)
+                            
+                            # Info badges under image thumbnail
+                            st.caption(f"Volume: **{simulated_ml} mL**")
                             if is_hemolyzed == "Yes":
                                 st.error("⚠️ Hemolysis Detected")
                             else:
@@ -134,7 +137,7 @@ elif st.session_state.current_page == "hemolysis_inspector":
                 df_results = pd.DataFrame(results_data)
                 
                 st.write("---")
-                st.subheader("📊 Hemolysis Assessment Registry")
+                st.subheader("📊 Hemolysis & Volume Registry")
                 st.dataframe(df_results, use_container_width=True)
                 
                 # Output analytical download report
@@ -142,7 +145,7 @@ elif st.session_state.current_page == "hemolysis_inspector":
                 st.download_button(
                     label="📥 Export Assessment List (CSV)",
                     data=csv_buffer,
-                    file_name="hemolysis_zip_inspection_report.csv",
+                    file_name="tube_volume_and_hemolysis_report.csv",
                     mime="text/csv",
                     type="primary"
                 )
