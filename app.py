@@ -108,7 +108,7 @@ elif st.session_state.current_page == "hemolysis_inspector":
                     st.success(f"📦 Successfully extracted {len(image_paths)} images.")
                     
                     # 💡 SET IMAGES PER ROW HERE (e.g., 4 or 6 images looks best)
-                    IMAGES_PER_ROW = 4
+                    IMAGES_PER_ROW = 8
                     
                     # 💡 FIX: Split the files into distinct rows so they align horizontally
                     for i in range(0, len(image_paths), IMAGES_PER_ROW):
