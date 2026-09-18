@@ -3,6 +3,10 @@ import os
 import pandas as pd
 import zipfile
 from io import BytesIO
+# Make sure to add these imports at the very top of your app.py file:
+import cv2
+import numpy as np
+from PIL import Image
 
 st.set_page_config(page_title="Lab Portal", page_icon="🧪", layout="wide")
 
@@ -62,8 +66,13 @@ if st.session_state.current_page == "home":
         except Exception as e:
             st.caption("Unable to load embedded Venus frame view.")
 
+# Make sure to add these imports at the very top of your app.py file:
+# import cv2
+# import numpy as np
+# from PIL import Image
+
 # ==========================================================
-# SCREEN: TUBE INSPECTION SCREEN (ZIP AUTOMATION W/ VOLUME)
+# SCREEN: TUBE INSPECTION SCREEN (ZIP AUTOMATION W/ PLASMA REGION HIGHLIGHTING)
 # ==========================================================
 elif st.session_state.current_page == "hemolysis_inspector":
     if st.button("⬅️ Back to Main Hub"):
@@ -71,7 +80,7 @@ elif st.session_state.current_page == "hemolysis_inspector":
         st.rerun()
 
     st.title("🩸 Tube Hemolysis & Volume Classification")
-    st.write("Upload your zipped image folder to instantly extract, check for hemolysis, and estimate liquid volume.")
+    st.write("Upload your zipped image folder to extract samples, evaluate hemolysis risk, and view target color analysis zones.")
     
     st.info(
         "💡 **Zip Target:**\n"
@@ -80,7 +89,6 @@ elif st.session_state.current_page == "hemolysis_inspector":
     
     st.write("---")
     
-    # File uploader targeting single zip package
     uploaded_zip = st.file_uploader(
         "Select or Drag and Drop the zipped folder:", 
         type=["zip"], 
@@ -92,7 +100,6 @@ elif st.session_state.current_page == "hemolysis_inspector":
             results_data = []
             valid_extensions = ('.png', '.jpg', '.jpeg', '.tiff', '.bmp')
             
-            # Open the zip archive out of memory stream
             with zipfile.ZipFile(uploaded_zip) as z:
                 all_files = z.namelist()
                 image_paths = [f for f in all_files if f.lower().endswith(valid_extensions) and not f.startswith('__MACOSX') and not os.path.basename(f).startswith('.')]
@@ -100,19 +107,65 @@ elif st.session_state.current_page == "hemolysis_inspector":
                 if not image_paths:
                     st.error("Could not find any supported image formats (.png, .jpg, .jpeg) inside this zip package.")
                 else:
-                    st.success(f"📦 Successfully extracted {len(image_paths)} images from archive. Processing analysis...")
+                    st.success(f"📦 Successfully extracted {len(image_paths)} images from archive. Processing color-zone highlighting...")
                     
-                    # 💡 8 COLUMNS: Automatically shrinks the visual size of each tube thumbnail preview
                     grid_cols = st.columns(8)
                     
                     for idx, img_path in enumerate(image_paths):
                         filename = os.path.basename(img_path)
                         img_bytes = z.read(img_path)
                         
-                        # 1. Simulated Hemolysis prediction rule base
-                        is_hemolyzed = "Yes" if (idx % 3 == 0 or "hem" in filename.lower()) else "No"
+                        # --- COMPUTER VISION ANALYSIS & HIGHLIGHTING SECTION ---
+                        # 1. Convert raw image bytes into a format OpenCV can process
+                        nparr = np.frombuffer(img_bytes, np.uint8)
+                        cv_img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
                         
-                        # 2. Simulated Liquid Volume calculation matrix
+                        if cv_img is not None:
+                            h, w, _ = cv_img.shape
+                            
+                            # 2. Dynamic Plasma Detection Frame:
+                            # Standard automation racks keep tubes centered. We crop a target bounding region
+                            # focusing on the top-to-middle half (approx 20% to 55% from the top) where plasma pools.
+                            start_y = int(h * 0.20)
+                            end_y = int(h * 0.55)
+                            start_x = int(w * 0.25)
+                            end_x = int(w * 0.75)
+                            
+                            # Extract the exact pixels the color calculation is sampling
+                            plasma_zone = cv_img[start_y:end_y, start_x:end_x]
+                            
+                            # 3. Calculate Average Color profile inside that specific window
+                            # Converts BGR to RGB channel formatting
+                            avg_color_per_row = np.average(plasma_zone, axis=0)
+                            avg_color = np.average(avg_color_per_row, axis=0)
+                            avg_r, avg_g, avg_b = avg_color[2], avg_color[1], avg_color[0]
+                            
+                            # 4. Color Logic Rule: Hemolysis causes plasma to look pink/red instead of straw yellow.
+                            # If Red intensity heavily outweighs Green/Blue, flag it as Hemolyzed.
+                            if avg_r > (avg_g * 1.15) and avg_r > 100:
+                                is_hemolyzed = "Yes"
+                            else:
+                                is_hemolyzed = "No"
+                                
+                            # 5. Draw a neon green bounding box around the exact area being sampled
+                            # Thickness scales linearly based on image dimension bounds
+                            box_thickness = max(2, int(w * 0.01))
+                            cv2.rectangle(cv_img, (start_x, start_y), (end_x, end_y), (0, 255, 0), box_thickness)
+                            
+                            # Add text labeling above the green target region
+                            cv2.putText(
+                                cv_img, "COLOR ZONE", (start_x, max(20, start_y - 10)),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), max(1, int(box_thickness/2))
+                            )
+                            
+                            # Convert back to standard display format for Streamlit rendering
+                            display_img = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
+                        else:
+                            # Fallback if image structural parsing fails
+                            display_img = img_bytes
+                            is_hemolyzed = "No"
+                        
+                        # --- VOLUME SIMULATION ---
                         simulated_ml = round(1.2 + (idx * 0.45) % 3.8, 2) 
                         
                         results_data.append({
@@ -121,10 +174,9 @@ elif st.session_state.current_page == "hemolysis_inspector":
                             "Estimated Volume (mL)": simulated_ml
                         })
                         
-                        # Display thumbnail card grid inside the tight 8-column arrangement
+                        # Display thumbnail grid with the highlighted overlay
                         with grid_cols[idx % 8]:
-                            st.image(img_bytes, use_container_width=True)
-                            # Truncate filename text to keep the tiny layout clean
+                            st.image(display_img, use_container_width=True)
                             st.caption(f"**{filename[:12]}...**") 
                             st.caption(f"Vol: {simulated_ml}mL")
                             if is_hemolyzed == "Yes":
@@ -133,14 +185,11 @@ elif st.session_state.current_page == "hemolysis_inspector":
                                 st.success("✅ Pass")
             
             if results_data:
-                # Render calculated framework matrix
                 df_results = pd.DataFrame(results_data)
-                
                 st.write("---")
                 st.subheader("📊 Hemolysis & Volume Registry")
                 st.dataframe(df_results, use_container_width=True)
                 
-                # Output analytical download report
                 csv_buffer = df_results.to_csv(index=False).encode('utf-8')
                 st.download_button(
                     label="📥 Export Assessment List (CSV)",
@@ -156,6 +205,7 @@ elif st.session_state.current_page == "hemolysis_inspector":
             st.error(f"Processing structural breakdown tracking error: {e}")
     else:
         st.warning("Please upload the `easyBlood1 Images.zip` archive file to execute analytical mapping.")
+
 
 # ==========================================================
 # SCREEN 2: THE FILE UPLOAD & MATH SCREEN 
