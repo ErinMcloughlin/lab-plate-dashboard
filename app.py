@@ -102,7 +102,8 @@ elif st.session_state.current_page == "hemolysis_inspector":
                 else:
                     st.success(f"📦 Successfully extracted {len(image_paths)} images from archive. Processing analysis...")
                     
-                    grid_cols = st.columns(4)
+                    # 💡 8 COLUMNS: Automatically shrinks the visual size of each tube thumbnail preview
+                    grid_cols = st.columns(8)
                     
                     for idx, img_path in enumerate(image_paths):
                         filename = os.path.basename(img_path)
@@ -111,8 +112,7 @@ elif st.session_state.current_page == "hemolysis_inspector":
                         # 1. Simulated Hemolysis prediction rule base
                         is_hemolyzed = "Yes" if (idx % 3 == 0 or "hem" in filename.lower()) else "No"
                         
-                        # 2. Simulated Liquid Volume calculation matrix (Placeholder logic simulating mL extraction)
-                        # (This simulates measuring the pixel height of the liquid column relative to the tube bounds)
+                        # 2. Simulated Liquid Volume calculation matrix
                         simulated_ml = round(1.2 + (idx * 0.45) % 3.8, 2) 
                         
                         results_data.append({
@@ -131,6 +131,7 @@ elif st.session_state.current_page == "hemolysis_inspector":
                                 st.error("⚠️ Hemolysis")
                             else:
                                 st.success("✅ Pass")
+            
             if results_data:
                 # Render calculated framework matrix
                 df_results = pd.DataFrame(results_data)
