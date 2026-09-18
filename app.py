@@ -69,7 +69,7 @@ if st.session_state.current_page == "home":
             st.caption("Unable to load embedded Venus frame view.")
 
 # ==========================================================
-# SCREEN: TUBE INSPECTION SCREEN (CLEAN GALLERY MATRIX WITH SIDEBAR CONFIG)
+# SCREEN: TUBE INSPECTION SCREEN (CLEAN GALLERY MATRIX)
 # ==========================================================
 elif st.session_state.current_page == "hemolysis_inspector":
     if st.button("⬅️ Back to Main Hub"):
@@ -101,7 +101,6 @@ elif st.session_state.current_page == "hemolysis_inspector":
             os.makedirs(os.path.join(FEEDBACK_DIR, "normal"), exist_ok=True)
             os.makedirs(os.path.join(FEEDBACK_DIR, "hemolyzed"), exist_ok=True)
             
-            # Read files into memory once to keep user interaction smooth
             with zipfile.ZipFile(uploaded_zip) as z:
                 all_files = z.namelist()
                 image_paths = [f for f in all_files if f.lower().endswith(valid_extensions) and not f.startswith('__MACOSX') and not os.path.basename(f).startswith('.')]
@@ -109,7 +108,6 @@ elif st.session_state.current_page == "hemolysis_inspector":
                 if not image_paths:
                     st.error("Could not find any supported image formats inside this zip package.")
                 else:
-                    # Pre-process image states and baseline logic calculations
                     processed_tubes = {}
                     for idx, img_path in enumerate(image_paths):
                         filename = os.path.basename(img_path)
@@ -146,7 +144,6 @@ elif st.session_state.current_page == "hemolysis_inspector":
                                 cv2.rectangle(cv_img, (start_x, start_y), (end_x, end_y), (0, 255, 0), box_thickness)
                                 display_img = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
                         
-                        # Determine current actual state (either model guess or user correction)
                         final_state = st.session_state.tube_corrections.get(filename, model_pred)
                         simulated_ml = round(1.2 + (idx * 0.45) % 3.8, 2)
                         
@@ -166,7 +163,6 @@ elif st.session_state.current_page == "hemolysis_inspector":
                             "User Corrected": "True" if filename in st.session_state.tube_corrections else "False"
                         })
 
-                    # 🌟 VISUAL GRID: Clean, borderless grid alignment (no menus or bulky error banners)
                     st.subheader("📸 Extraction Gallery Matrix")
                     grid_cols = st.columns(8)
                     
@@ -174,20 +170,15 @@ elif st.session_state.current_page == "hemolysis_inspector":
                         tube = processed_tubes[filename]
                         
                         with grid_cols[idx % 8]:
-                            # Mini status color dots to keep things visually clean
                             status_dot = "🔴 Hemolysis" if tube["final_state"] == "Yes" else "🟢 Pass"
-                            
-                            # Clean image render
                             st.image(tube["img_display"], use_container_width=True)
                             st.caption(f"**{filename[:12]}...**")
                             st.caption(f"{status_dot} | {tube['volume']}mL")
                             
-                            # A clean, low-profile button to select the image for editing
                             if st.button("🔎 Review", key=f"btn_{filename}_{idx}", use_container_width=True):
                                 st.session_state.selected_tube = filename
                                 st.rerun()
 
-            # 🌟 SIDEBAR CONFIG PANEL: Moves interactive workflow elements off the main grid view
             if st.session_state.selected_tube and st.session_state.selected_tube in processed_tubes:
                 selected_name = st.session_state.selected_tube
                 selected_data = processed_tubes[selected_name]
@@ -204,19 +195,15 @@ elif st.session_state.current_page == "hemolysis_inspector":
                     index=default_idx
                 )
                 
-                # Update corrections state when the sidebar changes
                 if user_validation != selected_data["model_pred"]:
                     if st.session_state.tube_corrections.get(selected_name) != user_validation:
                         st.session_state.tube_corrections[selected_name] = user_validation
-                        
-                        # Save the updated target back to disk
                         label_folder = "hemolyzed" if user_validation == "Yes" else "normal"
                         save_filepath = os.path.join(FEEDBACK_DIR, label_folder, selected_name)
                         with open(save_filepath, "wb") as f:
                             f.write(selected_data["img_raw"])
                         st.rerun()
                 elif selected_name in st.session_state.tube_corrections and user_validation == selected_data["model_pred"]:
-                    # Remove correction if reverted to the original prediction
                     del st.session_state.tube_corrections[selected_name]
                     st.rerun()
                     
@@ -224,7 +211,6 @@ elif st.session_state.current_page == "hemolysis_inspector":
                     st.session_state.selected_tube = None
                     st.rerun()
 
-            # Render summary report registers below the visual view
             if results_data:
                 df_results = pd.DataFrame(results_data)
                 st.write("---")
@@ -246,8 +232,41 @@ elif st.session_state.current_page == "hemolysis_inspector":
                 with col2:
                     memory_zip = BytesIO()
                     has_files = False
+                    
                     if os.path.exists(FEEDBACK_DIR):
                         for root, dirs, files in os.walk(FEEDBACK_DIR):
+                            for file in files:
+                                if not file.startswith('.'):
+                                    has_files = True
+                                    
+                    if has_files:
+                        with zipfile.ZipFile(memory_zip, "w") as z_out:
+                            for root, dirs, files in os.walk(FEEDBACK_DIR):
+                                for file in files:
+                                    if not file.startswith('.'):
+                                        file_path = os.path.join(root, file)
+                                        archive_name = os.path.relpath(file_path, FEEDBACK_DIR)
+                                        z_out.write(file_path, archive_name)
+                                        
+                        memory_zip.seek(0)
+                        st.download_button(
+                            label="📥 Download Training Dataset (.zip)",
+                            data=memory_zip,
+                            file_name="my_hemolysis_training_data.zip",
+                            mime="application/zip",
+                            type="secondary",
+                            use_container_width=True
+                        )
+                    else:
+                        st.button("📥 Training Dataset Empty", disabled=True, use_container_width=True)
+                        
+        except zipfile.BadZipFile:
+            st.error("The uploaded file structure appears corrupted or isn't a true zip file structure.")
+        except Exception as e:
+            st.error(f"Processing error: {e}")
+    else:
+        st.warning("Please upload the `easyBlood1 Images.zip` archive file to execute analytical mapping.")
+
 
 # ==========================================================
 # SCREEN 2: THE FILE UPLOAD & MATH SCREEN 
