@@ -166,9 +166,10 @@ elif st.session_state.current_page == "hemolysis_inspector":
                                 default_index = 0 if st.session_state.tube_corrections[filename] == "No" else 1
                             
                             # Render elements strictly within this row's active column slot
+                            #  NEW CORRECTED CODE
                             with grid_cols[col_idx]:
-                                # 💡 Use container width + forced height to clamp any size image into a uniform block
-                                st.image(display_img, use_container_width=True, height=220)
+                                # Streamlit scales the image to fit the column width automatically
+                                st.image(display_img, use_container_width=True) 
                                 st.caption(f"**{filename[:16]}...**")
                                 
                                 user_validation = st.selectbox(
