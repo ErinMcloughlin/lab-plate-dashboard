@@ -247,8 +247,7 @@ elif st.session_state.current_page == "hemolysis_inspector":
                     memory_zip = BytesIO()
                     has_files = False
                     if os.path.exists(FEEDBACK_DIR):
-                        with zipfile.ZipFile(memory_zip, "w") as z_out:
-
+                        for root, dirs, files in os.walk(FEEDBACK_DIR):
 
 # ==========================================================
 # SCREEN 2: THE FILE UPLOAD & MATH SCREEN 
