@@ -7,6 +7,8 @@ from io import BytesIO
 import cv2
 import numpy as np
 from PIL import Image
+import pickle
+from io import BytesIO
 
 st.set_page_config(page_title="Lab Portal", page_icon="🧪", layout="wide")
 
@@ -32,10 +34,10 @@ if st.session_state.current_page == "home":
             st.session_state.current_page = "uploader"
             st.rerun()
             
-    # COLUMN 2: Tube Hemolysis Inspection Tool
+    # COLUMN 2: Tube Hemolysis & Volume Inspection Tool
     with col2:
         st.subheader("🩸 Tube Inspection")
-        st.write("Upload tube images from your easyBlood1 folder to screen for hemolysis.")
+        st.write("Upload tube images from your easyBlood1 folder to screen for hemolysis and volume.")
         if st.button("🔍 Inspect Tubes", type="primary", use_container_width=True):
             st.session_state.current_page = "hemolysis_inspector"
             st.rerun()
@@ -55,7 +57,7 @@ if st.session_state.current_page == "home":
         
         st.link_button(
             label="🌐 Open Venus Portal", 
-            url="https://venus.harbinger-health.net/", 
+            url="https://harbinger-health.net", 
             type="primary", 
             use_container_width=True
         )
@@ -65,7 +67,6 @@ if st.session_state.current_page == "home":
             st.components.v1.iframe(src="https://harbinger-health.net", height=350, scrolling=True)
         except Exception as e:
             st.caption("Unable to load embedded Venus frame view.")
-
 
 # ==========================================================
 # SCREEN: TUBE INSPECTION SCREEN (ACTIVE LEARNING FEEDBACK)
@@ -92,14 +93,12 @@ elif st.session_state.current_page == "hemolysis_inspector":
     
     if uploaded_zip:
         try:
-            # Initialize a session state dictionary to hold user corrections if it doesn't exist
             if "tube_corrections" not in st.session_state:
                 st.session_state.tube_corrections = {}
                 
             results_data = []
             valid_extensions = ('.png', '.jpg', '.jpeg', '.tiff', '.bmp')
             
-            # Directory where corrected data will be stored for retraining
             FEEDBACK_DIR = "training_data_feedback"
             os.makedirs(os.path.join(FEEDBACK_DIR, "normal"), exist_ok=True)
             os.makedirs(os.path.join(FEEDBACK_DIR, "hemolyzed"), exist_ok=True)
@@ -113,17 +112,15 @@ elif st.session_state.current_page == "hemolysis_inspector":
                 else:
                     st.success(f"📦 Successfully extracted {len(image_paths)} images.")
                     
-                    grid_cols = st.columns(6) # Slightly wider columns to fit the selectbox comfortably
+                    grid_cols = st.columns(6)
                     
                     for idx, img_path in enumerate(image_paths):
                         filename = os.path.basename(img_path)
                         img_bytes = z.read(img_path)
                         
-                        # ✨ SAFE INITIALIZATION: Guarantees variables exist even if cv2 fails to decode
                         display_img = img_bytes
                         model_pred = "No"
                         
-                        # --- 1. MODEL PREDICTION (Active Learning Engine) ---
                         nparr = np.frombuffer(img_bytes, np.uint8)
                         cv_img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
                         
@@ -137,27 +134,21 @@ elif st.session_state.current_page == "hemolysis_inspector":
                                 avg_color = np.average(np.average(plasma_zone, axis=0), axis=0)
                                 avg_b, avg_g, avg_r = avg_color[0], avg_color[1], avg_color[2]
                                 
-                                # Check if a personalized trained model file exists in your repository
                                 if os.path.exists("hemolysis_model.pkl"):
                                     try:
                                         with open("hemolysis_model.pkl", "rb") as f:
                                             trained_clf = pickle.load(f)
-                                        # Use machine learning prediction (0 = No, 1 = Yes)
                                         pred_idx = trained_clf.predict([[avg_r, avg_g, avg_b]])[0]
                                         model_pred = "Yes" if pred_idx == 1 else "No"
                                     except:
-                                        # Emergency fallback if model file fails to read
                                         model_pred = "Yes" if (avg_r > (avg_g * 1.15) and avg_r > 100) else "No"
                                 else:
-                                    # Standard fallback rule until you run train_model.py the first time
                                     model_pred = "Yes" if (avg_r > (avg_g * 1.15) and avg_r > 100) else "No"              
                                 
-                                # Highlight color zone
                                 box_thickness = max(2, int(w * 0.01))
                                 cv2.rectangle(cv_img, (start_x, start_y), (end_x, end_y), (0, 255, 0), box_thickness)
                                 display_img = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
                         
-                        # --- 2. INTERACTIVE USER FEEDBACK TRACKING ---
                         default_index = 0 if model_pred == "No" else 1
                         if filename in st.session_state.tube_corrections:
                             default_index = 0 if st.session_state.tube_corrections[filename] == "No" else 1
@@ -166,7 +157,6 @@ elif st.session_state.current_page == "hemolysis_inspector":
                             st.image(display_img, use_container_width=True)
                             st.caption(f"**{filename[:12]}...**")
                             
-                            # Interactive Dropdown directly below the image preview card
                             user_validation = st.selectbox(
                                 "Hemolysis?",
                                 options=["No", "Yes"],
@@ -174,11 +164,8 @@ elif st.session_state.current_page == "hemolysis_inspector":
                                 key=f"select_{filename}_{idx}"
                             )
                             
-                            # If user changes the value away from the original prediction, log it
                             if user_validation != model_pred:
                                 st.session_state.tube_corrections[filename] = user_validation
-                                
-                                # Write the corrected image file out to the feedback directory
                                 label_folder = "hemolyzed" if user_validation == "Yes" else "normal"
                                 save_filepath = os.path.join(FEEDBACK_DIR, label_folder, filename)
                                 with open(save_filepath, "wb") as f:
@@ -186,7 +173,6 @@ elif st.session_state.current_page == "hemolysis_inspector":
                                     
                                 st.caption("💾 *Logged to Training Data*")
                             
-                            # Final evaluation value to save in the export table
                             final_decision = user_validation
                             simulated_ml = round(1.2 + (idx * 0.45) % 3.8, 2) 
                             
@@ -204,11 +190,6 @@ elif st.session_state.current_page == "hemolysis_inspector":
                 st.subheader("📊 Validated Summary Registry")
                 st.dataframe(df_results, use_container_width=True)
                 
-                # Check metrics of corrections made
-                corrections_count = df_results[df_results["User Corrected"] == "True"].shape[0]
-                if corrections_count > 0:
-                    st.toast(f"Logged {corrections_count} sample corrections to disk during this session!", icon="💾")
-                
                 csv_buffer = df_results.to_csv(index=False).encode('utf-8')
                 st.download_button(
                     label="📥 Export Assessment List (CSV)",
@@ -222,29 +203,11 @@ elif st.session_state.current_page == "hemolysis_inspector":
                 st.subheader("⚙️ Active Learning Admin Panel")
                 st.write("Download your collected training image data package to retrain your model on your computer.")
                 
-                # Create an in-memory zip file of the feedback folders
                 memory_zip = BytesIO()
                 has_files = False
                 
                 with zipfile.ZipFile(memory_zip, "w") as z_out:
-                    if os.path.exists(FEEDBACK_DIR):
-                        for root, dirs, files in os.walk(FEEDBACK_DIR):
-                            for file in files:
-                                if not file.startswith('.'):
-                                    file_path = os.path.join(root, file)
-                                    archive_name = os.path.relpath(file_path, FEEDBACK_DIR)
-                                    z_out.write(file_path, archive_name)
-                                    has_files = True
 
-                if has_files:
-                    memory_zip.seek(0)
-                    st.download_button(
-                        label="📥 Download Training Dataset (.zip)",
-                        data=memory_zip,
-                        file_name="my_hemolysis_training_data.zip",
-                        mime="application/zip",
-                        type="secondary"
-                    )
 
 # ==========================================================
 # SCREEN 2: THE FILE UPLOAD & MATH SCREEN 
