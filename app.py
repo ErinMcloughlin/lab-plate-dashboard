@@ -121,17 +121,16 @@ elif st.session_state.current_page == "hemolysis_inspector":
                             "Estimated Volume (mL)": simulated_ml
                         })
                         
-                        # Display thumbnail card grid matching filename layout
+                        # Display thumbnail card grid inside the tight 8-column arrangement
                         with grid_cols[idx % 8]:
-                            st.image(img_bytes, caption=filename, use_container_width=True)
-                            
-                            # Info badges under image thumbnail
-                            st.caption(f"Volume: **{simulated_ml} mL**")
+                            st.image(img_bytes, use_container_width=True)
+                            # Truncate filename text to keep the tiny layout clean
+                            st.caption(f"**{filename[:12]}...**") 
+                            st.caption(f"Vol: {simulated_ml}mL")
                             if is_hemolyzed == "Yes":
-                                st.error("⚠️ Hemolysis Detected")
+                                st.error("⚠️ Hemolysis")
                             else:
-                                st.success("✅ Clear / Pass")
-            
+                                st.success("✅ Pass")
             if results_data:
                 # Render calculated framework matrix
                 df_results = pd.DataFrame(results_data)
