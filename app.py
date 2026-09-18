@@ -122,7 +122,7 @@ elif st.session_state.current_page == "hemolysis_inspector":
                         })
                         
                         # Display thumbnail card grid matching filename layout
-                        with grid_cols[idx % 4]:
+                        with grid_cols[idx % 8]:
                             st.image(img_bytes, caption=filename, use_container_width=True)
                             
                             # Info badges under image thumbnail
