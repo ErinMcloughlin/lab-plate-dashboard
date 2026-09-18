@@ -206,7 +206,34 @@ elif st.session_state.current_page == "hemolysis_inspector":
                 memory_zip = BytesIO()
                 has_files = False
                 
-                with zipfile.ZipFile(memory_zip, "w") as z_out:
+                if os.path.exists(FEEDBACK_DIR):
+                    with zipfile.ZipFile(memory_zip, "w") as z_out:
+                        for root, dirs, files in os.walk(FEEDBACK_DIR):
+                            for file in files:
+                                if not file.startswith('.'):
+                                    file_path = os.path.join(root, file)
+                                    archive_name = os.path.relpath(file_path, FEEDBACK_DIR)
+                                    z_out.write(file_path, archive_name)
+                                    has_files = True
+
+                if has_files:
+                    memory_zip.seek(0)
+                    st.download_button(
+                        label="📥 Download Training Dataset (.zip)",
+                        data=memory_zip,
+                        file_name="my_hemolysis_training_data.zip",
+                        mime="application/zip",
+                        type="secondary"
+                    )
+                else:
+                    st.info("ℹ️ No human corrections have been logged yet. Changes will appear here once you correct a sample!")
+                
+        except zipfile.BadZipFile:
+            st.error("The uploaded file structure appears corrupted or isn't a true zip file structure.")
+        except Exception as e:
+            st.error(f"Processing error: {e}")
+    else:
+        st.warning("Please upload the `easyBlood1 Images.zip` archive file to execute analytical mapping.")
 
 
 # ==========================================================
