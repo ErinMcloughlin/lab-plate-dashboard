@@ -69,7 +69,7 @@ if st.session_state.current_page == "home":
             st.caption("Unable to load embedded Venus frame view.")
 
 # ==========================================================
-# SCREEN: TUBE INSPECTION SCREEN (CLEAN, SAME-SIZE MATRIX W/ GREEN BOX)
+# SCREEN: TUBE INSPECTION SCREEN (PERFECT ROW-BY-ROW UNIFORM GRID)
 # ==========================================================
 elif st.session_state.current_page == "hemolysis_inspector":
     if st.button("⬅️ Back to Main Hub"):
@@ -107,87 +107,97 @@ elif st.session_state.current_page == "hemolysis_inspector":
                 else:
                     st.success(f"📦 Successfully extracted {len(image_paths)} images.")
                     
-                    # 💡 Clean 6-Column Grid Layout: Ensures all previews share identical, uniform spacing constraints
-                    grid_cols = st.columns(6)
+                    # 💡 SET IMAGES PER ROW HERE (e.g., 4 or 6 images looks best)
+                    IMAGES_PER_ROW = 4
                     
-                    for idx, img_path in enumerate(image_paths):
-                        filename = os.path.basename(img_path)
-                        img_bytes = z.read(img_path)
+                    # 💡 FIX: Split the files into distinct rows so they align horizontally
+                    for i in range(0, len(image_paths), IMAGES_PER_ROW):
+                        row_paths = image_paths[i : i + IMAGES_PER_ROW]
                         
-                        display_img = img_bytes
-                        model_pred = "No"
+                        # Generate a fresh row container layout
+                        grid_cols = st.columns(IMAGES_PER_ROW)
                         
-                        nparr = np.frombuffer(img_bytes, np.uint8)
-                        cv_img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-                        
-                        if cv_img is not None:
-                            h, w, _ = cv_img.shape
-                            start_y, end_y = int(h * 0.20), int(h * 0.55)
-                            start_x, end_x = int(w * 0.25), int(w * 0.75)
-                            plasma_zone = cv_img[start_y:end_y, start_x:end_x]
+                        for col_idx, img_path in enumerate(row_paths):
+                            # Overall dataset tracking index
+                            global_idx = i + col_idx
                             
-                            if plasma_zone.size > 0:
-                                avg_color = np.average(np.average(plasma_zone, axis=0), axis=0)
-                                avg_b = avg_color[0]
-                                avg_g = avg_color[1]
-                                avg_r = avg_color[2]
+                            filename = os.path.basename(img_path)
+                            img_bytes = z.read(img_path)
+                            
+                            display_img = img_bytes
+                            model_pred = "No"
+                            
+                            nparr = np.frombuffer(img_bytes, np.uint8)
+                            cv_img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                            
+                            if cv_img is not None:
+                                h, w, _ = cv_img.shape
+                                start_y, end_y = int(h * 0.20), int(h * 0.55)
+                                start_x, end_x = int(w * 0.25), int(w * 0.75)
+                                plasma_zone = cv_img[start_y:end_y, start_x:end_x]
                                 
-                                if os.path.exists("hemolysis_model.pkl"):
-                                    try:
-                                        with open("hemolysis_model.pkl", "rb") as f:
-                                            trained_clf = pickle.load(f)
-                                        pred_idx = trained_clf.predict([[avg_r, avg_g, avg_b]])[0]
-                                        model_pred = "Yes" if pred_idx == 1 else "No"
-                                    except:
-                                        model_pred = "Yes" if (avg_r > (avg_g * 1.15) and avg_r > 100) else "No"
-                                else:
-                                    model_pred = "Yes" if (avg_r > (avg_g * 1.15) and avg_r > 100) else "No"              
+                                if plasma_zone.size > 0:
+                                    avg_color = np.average(np.average(plasma_zone, axis=0), axis=0)
+                                    avg_b = avg_color[0]
+                                    avg_g = avg_color[1]
+                                    avg_r = avg_color[2]
+                                    
+                                    if os.path.exists("hemolysis_model.pkl"):
+                                        try:
+                                            with open("hemolysis_model.pkl", "rb") as f:
+                                                trained_clf = pickle.load(f)
+                                            pred_idx = trained_clf.predict([[avg_r, avg_g, avg_b]])[0]
+                                            model_pred = "Yes" if pred_idx == 1 else "No"
+                                        except:
+                                            model_pred = "Yes" if (avg_r > (avg_g * 1.15) and avg_r > 100) else "No"
+                                    else:
+                                        model_pred = "Yes" if (avg_r > (avg_g * 1.15) and avg_r > 100) else "No"              
+                                    
+                                    box_thickness = max(2, int(w * 0.01))
+                                    cv2.rectangle(cv_img, (start_x, start_y), (end_x, end_y), (0, 255, 0), box_thickness)
+                                    cv2.putText(
+                                        cv_img, "COLOR ZONE", (start_x, max(20, start_y - 10)),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), max(1, int(box_thickness/2))
+                                    )
+                                    display_img = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
+                            
+                            default_index = 0 if model_pred == "No" else 1
+                            if filename in st.session_state.tube_corrections:
+                                default_index = 0 if st.session_state.tube_corrections[filename] == "No" else 1
+                            
+                            # Render elements strictly within this row's active column slot
+                            with grid_cols[col_idx]:
+                                # 💡 Use container width + forced height to clamp any size image into a uniform block
+                                st.image(display_img, use_container_width=True, height=220)
+                                st.caption(f"**{filename[:16]}...**")
                                 
-                                # ✨ NEON GREEN BOX REINSTATED: Marks the exact color zone window
-                                box_thickness = max(2, int(w * 0.01))
-                                cv2.rectangle(cv_img, (start_x, start_y), (end_x, end_y), (0, 255, 0), box_thickness)
-                                cv2.putText(
-                                    cv_img, "COLOR ZONE", (start_x, max(20, start_y - 10)),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), max(1, int(box_thickness/2))
+                                user_validation = st.selectbox(
+                                    "Hemolysis?",
+                                    options=["No", "Yes"],
+                                    index=default_index,
+                                    key=f"select_{filename}_{global_idx}"
                                 )
-                                display_img = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
+                                
+                                if user_validation != model_pred:
+                                    st.session_state.tube_corrections[filename] = user_validation
+                                    label_folder = "hemolyzed" if user_validation == "Yes" else "normal"
+                                    save_filepath = os.path.join(FEEDBACK_DIR, label_folder, filename)
+                                    with open(save_filepath, "wb") as f:
+                                        f.write(img_bytes)
+                                    st.caption("💾 *Logged*")
+                                
+                                simulated_ml = round(1.2 + (global_idx * 0.45) % 3.8, 2) 
+                                
+                                results_data.append({
+                                    "Sample Identification (Filename)": filename,
+                                    "Model Prediction": model_pred,
+                                    "Final Confirmed Status": user_validation,
+                                    "Estimated Volume (mL)": simulated_ml,
+                                    "User Corrected": "True" if user_validation != model_pred else "False"
+                                })
                         
-                        # Fetch the final status based on dropdown values
-                        default_index = 0 if model_pred == "No" else 1
-                        if filename in st.session_state.tube_corrections:
-                            default_index = 0 if st.session_state.tube_corrections[filename] == "No" else 1
-                        
-                        # Render matching layout items in a uniform line
-                        with grid_cols[idx % 6]:
-                            # 💡 use_container_width=True makes every single image snap to the exact same size
-                            st.image(display_img, use_container_width=True)
-                            st.caption(f"**{filename[:12]}...**")
-                            
-                            # Dropdown remains under the specific image for quick adjustments
-                            user_validation = st.selectbox(
-                                "Hemolysis?",
-                                options=["No", "Yes"],
-                                index=default_index,
-                                key=f"select_{filename}_{idx}"
-                            )
-                            
-                            if user_validation != model_pred:
-                                st.session_state.tube_corrections[filename] = user_validation
-                                label_folder = "hemolyzed" if user_validation == "Yes" else "normal"
-                                save_filepath = os.path.join(FEEDBACK_DIR, label_folder, filename)
-                                with open(save_filepath, "wb") as f:
-                                    f.write(img_bytes)
-                                st.caption("💾 *Logged Changes*")
-                            
-                            simulated_ml = round(1.2 + (idx * 0.45) % 3.8, 2) 
-                            
-                            results_data.append({
-                                "Sample Identification (Filename)": filename,
-                                "Model Prediction": model_pred,
-                                "Final Confirmed Status": user_validation,
-                                "Estimated Volume (mL)": simulated_ml,
-                                "User Corrected": "True" if user_validation != model_pred else "False"
-                            })
+                        # Add a visual spacer row to keep separate horizontal row groupings clean
+                        st.write("")
             
             if results_data:
                 df_results = pd.DataFrame(results_data)
@@ -217,6 +227,7 @@ elif st.session_state.current_page == "hemolysis_inspector":
                                 if not file.startswith('.'):
                                     has_files = True
                                     
+                    # This block handles the training dataset download buttons
                     if has_files:
                         with zipfile.ZipFile(memory_zip, "w") as z_out:
                             for root, dirs, files in os.walk(FEEDBACK_DIR):
@@ -238,12 +249,15 @@ elif st.session_state.current_page == "hemolysis_inspector":
                     else:
                         st.button("📥 Training Dataset Empty", disabled=True, use_container_width=True)
                         
+        # These catch blocks close out the main 'try:' block from the zipfile extraction
         except zipfile.BadZipFile:
             st.error("The uploaded file structure appears corrupted or isn't a true zip file structure.")
         except Exception as e:
             st.error(f"Processing error: {e}")
-    else:
-        st.warning("Please upload the `easyBlood1 Images.zip` archive file to execute analytical mapping.")
+            
+# This else statement aligns with the very top 'if uploaded_zip:' check
+else:
+    st.warning("Please upload the easyBlood1 Images.zip archive file to execute analytical mapping.")
 
 # ==========================================================
 # SCREEN 2: THE FILE UPLOAD & MATH SCREEN 
