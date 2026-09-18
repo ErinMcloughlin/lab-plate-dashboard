@@ -221,3 +221,37 @@ elif st.session_state.current_page == "uploader":
 
 # ==========================================================
 # SCREEN 3: THE LAB CAMERA SCREEN 
+# ==========================================================
+elif st.session_state.current_page == "cameras":
+    if st.button("⬅️ Back to Main Hub"):
+        st.session_state.current_page = "home"
+        st.rerun()
+
+    st.title("📷 Integrated Lab Cameras & Scanning")
+    st.write("Access your automation deck camera feed below.")
+    
+    st.info("💡 Note: To access this feed, your computer must be connected to the company's internal network or VPN.")
+    
+    st.write("---")
+    
+    # 📐 PUSH BUTTON TO THE RIGHT HAND SIDE USING COLUMNS
+    # Create 3 columns. col1 and col2 will act as empty space on the left.
+    col1, col2, col3 = st.columns(3)
+    
+    # Place the button strictly inside the right-most column (col3)
+    with col3:
+        camera_url = "http://10.76.32.104"
+        st.link_button(
+            label="🎥 Developmental Instrument", 
+            url=camera_url, 
+            type="primary", 
+            use_container_width=True
+        )
+    
+    st.write("---")
+    st.write("📊 **Troubleshooting Steps if the camera page won't load:**")
+    st.markdown("""
+    1. Confirm you are on the **Harbinger Health internal Wi-Fi** or corporate VPN.
+    2. Check that the camera hardware box is powered on.
+    3. If the camera page asks for a specific login or port, contact your automation engineer.
+    """)
