@@ -71,22 +71,28 @@ if st.session_state.current_page == "home":
 # import numpy as np
 # from PIL import Image
 
+# Make sure these are at the top of your app.py:
+# import cv2
+# import numpy as np
+# import zipfile
+# import os
+# import pandas as pd
+
 # ==========================================================
-# SCREEN: TUBE INSPECTION SCREEN (ZIP AUTOMATION W/ PLASMA REGION HIGHLIGHTING)
+# SCREEN: TUBE INSPECTION SCREEN (ACTIVE LEARNING FEEDBACK)
 # ==========================================================
 elif st.session_state.current_page == "hemolysis_inspector":
     if st.button("⬅️ Back to Main Hub"):
         st.session_state.current_page = "home"
         st.rerun()
 
-    st.title("🩸 Tube Hemolysis & Volume Classification")
-    st.write("Upload your zipped image folder to extract samples, evaluate hemolysis risk, and view target color analysis zones.")
+    st.title("🩸 Tube Hemolysis & Active Learning Registry")
+    st.write("Upload your zipped image folder. Correct any mistakes below to train the model to be smarter.")
     
     st.info(
-        "💡 **Zip Target:**\n"
-        "Drag and drop your `easyBlood1 Images.zip` file directly below."
+        "💡 **Active Learning Active:** Adjusting the dropdown menus below automatically "
+        "logs corrections to your local training dataset."
     )
-    
     st.write("---")
     
     uploaded_zip = st.file_uploader(
@@ -97,104 +103,111 @@ elif st.session_state.current_page == "hemolysis_inspector":
     
     if uploaded_zip:
         try:
+            # Initialize a session state dictionary to hold user corrections if it doesn't exist
+            if "tube_corrections" not in st.session_state:
+                st.session_state.tube_corrections = {}
+                
             results_data = []
             valid_extensions = ('.png', '.jpg', '.jpeg', '.tiff', '.bmp')
+            
+            # Directory where corrected data will be stored for retraining
+            FEEDBACK_DIR = "training_data_feedback"
+            os.makedirs(os.path.join(FEEDBACK_DIR, "normal"), exist_ok=True)
+            os.makedirs(os.path.join(FEEDBACK_DIR, "hemolyzed"), exist_ok=True)
             
             with zipfile.ZipFile(uploaded_zip) as z:
                 all_files = z.namelist()
                 image_paths = [f for f in all_files if f.lower().endswith(valid_extensions) and not f.startswith('__MACOSX') and not os.path.basename(f).startswith('.')]
                 
                 if not image_paths:
-                    st.error("Could not find any supported image formats (.png, .jpg, .jpeg) inside this zip package.")
+                    st.error("Could not find any supported image formats inside this zip package.")
                 else:
-                    st.success(f"📦 Successfully extracted {len(image_paths)} images from archive. Processing color-zone highlighting...")
+                    st.success(f"📦 Successfully extracted {len(image_paths)} images.")
                     
-                    grid_cols = st.columns(8)
+                    grid_cols = st.columns(6) # Slightly wider columns to fit the selectbox comfortably
                     
                     for idx, img_path in enumerate(image_paths):
                         filename = os.path.basename(img_path)
                         img_bytes = z.read(img_path)
                         
-                        # --- COMPUTER VISION ANALYSIS & HIGHLIGHTING SECTION ---
-                        # 1. Convert raw image bytes into a format OpenCV can process
+                        # --- 1. MODEL PREDICTION (Color analysis fallback) ---
                         nparr = np.frombuffer(img_bytes, np.uint8)
                         cv_img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
                         
                         if cv_img is not None:
                             h, w, _ = cv_img.shape
-                            
-                            # 2. Dynamic Plasma Detection Frame:
-                            # Standard automation racks keep tubes centered. We crop a target bounding region
-                            # focusing on the top-to-middle half (approx 20% to 55% from the top) where plasma pools.
-                            start_y = int(h * 0.20)
-                            end_y = int(h * 0.55)
-                            start_x = int(w * 0.25)
-                            end_x = int(w * 0.75)
-                            
-                            # Extract the exact pixels the color calculation is sampling
+                            start_y, end_y = int(h * 0.20), int(h * 0.55)
+                            start_x, end_x = int(w * 0.25), int(w * 0.75)
                             plasma_zone = cv_img[start_y:end_y, start_x:end_x]
+                            avg_color = np.average(np.average(plasma_zone, axis=0), axis=0)
+                            avg_r, avg_g, _ = avg_color, avg_color, avg_color
                             
-                            # 3. Calculate Average Color profile inside that specific window
-                            # Converts BGR to RGB channel formatting
-                            avg_color_per_row = np.average(plasma_zone, axis=0)
-                            avg_color = np.average(avg_color_per_row, axis=0)
-                            avg_r, avg_g, avg_b = avg_color[2], avg_color[1], avg_color[0]
+                            model_pred = "Yes" if (avg_r > (avg_g * 1.15) and avg_r > 100) else "No"
                             
-                            # 4. Color Logic Rule: Hemolysis causes plasma to look pink/red instead of straw yellow.
-                            # If Red intensity heavily outweighs Green/Blue, flag it as Hemolyzed.
-                            if avg_r > (avg_g * 1.15) and avg_r > 100:
-                                is_hemolyzed = "Yes"
-                            else:
-                                is_hemolyzed = "No"
-                                
-                            # 5. Draw a neon green bounding box around the exact area being sampled
-                            # Thickness scales linearly based on image dimension bounds
+                            # Draw box
                             box_thickness = max(2, int(w * 0.01))
                             cv2.rectangle(cv_img, (start_x, start_y), (end_x, end_y), (0, 255, 0), box_thickness)
-                            
-                            # Add text labeling above the green target region
-                            cv2.putText(
-                                cv_img, "COLOR ZONE", (start_x, max(20, start_y - 10)),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), max(1, int(box_thickness/2))
-                            )
-                            
-                            # Convert back to standard display format for Streamlit rendering
                             display_img = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
                         else:
-                            # Fallback if image structural parsing fails
+                            model_pred = "No"
                             display_img = img_bytes
-                            is_hemolyzed = "No"
                         
-                        # --- VOLUME SIMULATION ---
-                        simulated_ml = round(1.2 + (idx * 0.45) % 3.8, 2) 
+                        # --- 2. INTERACTIVE USER FEEDBACK TRACKING ---
+                        # Use the previously saved correction if the user already changed it during this session
+                        default_index = 0 if model_pred == "No" else 1
+                        if filename in st.session_state.tube_corrections:
+                            default_index = 0 if st.session_state.tube_corrections[filename] == "No" else 1
                         
-                        results_data.append({
-                            "Sample Identification (Filename)": filename,
-                            "Hemolyzed": is_hemolyzed,
-                            "Estimated Volume (mL)": simulated_ml
-                        })
-                        
-                        # Display thumbnail grid with the highlighted overlay
-                        with grid_cols[idx % 8]:
+                        with grid_cols[idx % 6]:
                             st.image(display_img, use_container_width=True)
-                            st.caption(f"**{filename[:12]}...**") 
-                            st.caption(f"Vol: {simulated_ml}mL")
-                            if is_hemolyzed == "Yes":
-                                st.error("⚠️ Hemolysis")
-                            else:
-                                st.success("✅ Pass")
+                            st.caption(f"**{filename[:12]}...**")
+                            
+                            # Interactive Dropdown directly below the image preview card
+                            user_validation = st.selectbox(
+                                "Hemolysis?",
+                                options=["No", "Yes"],
+                                index=default_index,
+                                key=f"select_{filename}_{idx}"
+                            )
+                            
+                            # If user changes the value away from the original prediction, log it
+                            if user_validation != model_pred:
+                                st.session_state.tube_corrections[filename] = user_validation
+                                
+                                # Write the corrected image file out to the feedback directory
+                                label_folder = "hemolyzed" if user_validation == "Yes" else "normal"
+                                save_filepath = os.path.join(FEEDBACK_DIR, label_folder, filename)
+                                with open(save_filepath, "wb") as f:
+                                    f.write(img_bytes)
+                                    
+                                st.caption("💾 *Logged to Training Data*")
+                            
+                            # Final evaluation value to save in the export table
+                            final_decision = user_validation
+                            
+                            results_data.append({
+                                "Sample Identification (Filename)": filename,
+                                "Model Prediction": model_pred,
+                                "Final Confirmed Status": final_decision,
+                                "User Corrected": "True" if user_validation != model_pred else "False"
+                            })
             
             if results_data:
                 df_results = pd.DataFrame(results_data)
                 st.write("---")
-                st.subheader("📊 Hemolysis & Volume Registry")
+                st.subheader("📊 Validated Summary Registry")
                 st.dataframe(df_results, use_container_width=True)
+                
+                # Check metrics of corrections made
+                corrections_count = df_results[df_results["User Corrected"] == "True"].shape[0]
+                if corrections_count > 0:
+                    st.toast(f"Logged {corrections_count} sample corrections to disk during this session!", icon="💾")
                 
                 csv_buffer = df_results.to_csv(index=False).encode('utf-8')
                 st.download_button(
                     label="📥 Export Assessment List (CSV)",
                     data=csv_buffer,
-                    file_name="tube_volume_and_hemolysis_report.csv",
+                    file_name="verified_tube_report.csv",
                     mime="text/csv",
                     type="primary"
                 )
@@ -202,10 +215,9 @@ elif st.session_state.current_page == "hemolysis_inspector":
         except zipfile.BadZipFile:
             st.error("The uploaded file structure appears corrupted or isn't a true zip file structure.")
         except Exception as e:
-            st.error(f"Processing structural breakdown tracking error: {e}")
+            st.error(f"Processing error: {e}")
     else:
         st.warning("Please upload the `easyBlood1 Images.zip` archive file to execute analytical mapping.")
-
 
 # ==========================================================
 # SCREEN 2: THE FILE UPLOAD & MATH SCREEN 
