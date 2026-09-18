@@ -203,7 +203,40 @@ elif st.session_state.current_page == "hemolysis_inspector":
                     mime="text/csv",
                     type="primary"
                 )
+                # Place this right below your CSV st.download_button block inside app.py:
+
+                st.write("---")
+                st.subheader("⚙️ Active Learning Admin Panel")
+                st.write("Download your collected training image data package to retrain your model on your computer.")
                 
+                # Create an in-memory zip file of the feedback folders
+                memory_zip = BytesIO()
+                has_files = False
+                
+                with zipfile.ZipFile(memory_zip, "w") as z_out:
+                    FEEDBACK_DIR = "training_data_feedback"
+                    if os.path.exists(FEEDBACK_DIR):
+                        for root, dirs, files in os.walk(FEEDBACK_DIR):
+                            for file in files:
+                                if not file.startswith('.'):
+                                    file_path = os.path.join(root, file)
+                                    # Maintain the subfolder structure (normal/ vs hemolyzed/) inside the zip package
+                                    archive_name = os.path.relpath(file_path, FEEDBACK_DIR)
+                                    z_out.write(file_path, archive_name)
+                                    has_files = True
+                
+                if has_files:
+                    memory_zip.seek(0)
+                    st.download_button(
+                        label="📥 Download Training Dataset (.zip)",
+                        data=memory_zip,
+                        file_name="my_hemolysis_training_data.zip",
+                        mime="application/zip",
+                        type="secondary"
+                    )
+                else:
+                    st.info("ℹ️ No human corrections have been logged yet. Changes will appear here once you correct a sample!")
+
         except zipfile.BadZipFile:
             st.error("The uploaded file structure appears corrupted or isn't a true zip file structure.")
         except Exception as e:
