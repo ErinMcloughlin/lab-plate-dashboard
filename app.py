@@ -249,15 +249,10 @@ elif st.session_state.current_page == "hemolysis_inspector":
                     else:
                         st.button("📥 Training Dataset Empty", disabled=True, use_container_width=True)
                         
-        # These catch blocks close out the main 'try:' block from the zipfile extraction
         except zipfile.BadZipFile:
             st.error("The uploaded file structure appears corrupted or isn't a true zip file structure.")
         except Exception as e:
             st.error(f"Processing error: {e}")
-            
-# This else statement aligns with the very top 'if uploaded_zip:' check
-else:
-    st.warning("Please upload the easyBlood1 Images.zip archive file to execute analytical mapping.")
 
 # ==========================================================
 # SCREEN 2: THE FILE UPLOAD & MATH SCREEN 
