@@ -125,25 +125,29 @@ elif st.session_state.current_page == "hemolysis_inspector":
                             start_x, end_x = int(w * 0.25), int(w * 0.75)
                             plasma_zone = cv_img[start_y:end_y, start_x:end_x]
                             
-                            if plasma_zone.size > 0:
-                                avg_color = np.average(np.average(plasma_zone, axis=0), axis=0)
-                                avg_b, avg_g, avg_r = avg_color, avg_color, avg_color
-                                
-                                if os.path.exists("hemolysis_model.pkl"):
-                                    try:
-                                        with open("hemolysis_model.pkl", "rb") as f:
-                                            trained_clf = pickle.load(f)
-                                        pred_idx = trained_clf.predict([[avg_r, avg_g, avg_b]])
-                                        model_pred = "Yes" if pred_idx == 1 else "No"
-                                    except:
-                                        model_pred = "Yes" if (avg_r > (avg_g * 1.15) and avg_r > 100) else "No"
-                                else:
-                                    model_pred = "Yes" if (avg_r > (avg_g * 1.15) and avg_r > 100) else "No"              
-                                
-                                box_thickness = max(2, int(w * 0.01))
-                                cv2.rectangle(cv_img, (start_x, start_y), (end_x, end_y), (0, 255, 0), box_thickness)
-                                display_img = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
-                        
+                        if plasma_zone.size > 0:
+                            # 1. Calculate average color array [Blue, Green, Red]
+                            avg_color = np.average(np.average(plasma_zone, axis=0), axis=0)
+                            
+                            # ✨ FIX: Explicitly extract the individual channel values from the array
+                            avg_b = avg_color[0]
+                            avg_g = avg_color[1]
+                            avg_r = avg_color[2]
+                            
+                            # 2. Check if a personalized trained model file exists in your repository
+                            if os.path.exists("hemolysis_model.pkl"):
+                                try:
+                                    with open("hemolysis_model.pkl", "rb") as f:
+                                        trained_clf = pickle.load(f)
+                                    # Use machine learning prediction (0 = No, 1 = Yes)
+                                    pred_idx = trained_clf.predict([[avg_r, avg_g, avg_b]])[0]
+                                    model_pred = "Yes" if pred_idx == 1 else "No"
+                                except:
+                                    model_pred = "Yes" if (avg_r > (avg_g * 1.15) and avg_r > 100) else "No"
+                            else:
+                                # Standard fallback rule until you run train_model.py the first time
+                                model_pred = "Yes" if (avg_r > (avg_g * 1.15) and avg_r > 100) else "No"              
+
                         final_state = st.session_state.tube_corrections.get(filename, model_pred)
                         simulated_ml = round(1.2 + (idx * 0.45) % 3.8, 2)
                         
