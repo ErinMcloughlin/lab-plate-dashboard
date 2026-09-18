@@ -66,17 +66,6 @@ if st.session_state.current_page == "home":
         except Exception as e:
             st.caption("Unable to load embedded Venus frame view.")
 
-# Make sure to add these imports at the very top of your app.py file:
-# import cv2
-# import numpy as np
-# from PIL import Image
-
-# Make sure these are at the top of your app.py:
-# import cv2
-# import numpy as np
-# import zipfile
-# import os
-# import pandas as pd
 
 # ==========================================================
 # SCREEN: TUBE INSPECTION SCREEN (ACTIVE LEARNING FEEDBACK)
@@ -129,29 +118,32 @@ elif st.session_state.current_page == "hemolysis_inspector":
                     for idx, img_path in enumerate(image_paths):
                         filename = os.path.basename(img_path)
                         img_bytes = z.read(img_path)
+                    # --- 1. MODEL PREDICTION (Active Learning Engine) ---
+                    nparr = np.frombuffer(img_bytes, np.uint8)
+                    cv_img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                    
+                    if cv_img is not None:
+                        h, w, _ = cv_img.shape
+                        start_y, end_y = int(h * 0.20), int(h * 0.55)
+                        start_x, end_x = int(w * 0.25), int(w * 0.75)
+                        plasma_zone = cv_img[start_y:end_y, start_x:end_x]
+                        avg_color = np.average(np.average(plasma_zone, axis=0), axis=0)
+                        avg_b, avg_g, avg_r = avg_color[0], avg_color[1], avg_color[2]
                         
-                        # --- 1. MODEL PREDICTION (Color analysis fallback) ---
-                        nparr = np.frombuffer(img_bytes, np.uint8)
-                        cv_img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-                        
-                        if cv_img is not None:
-                            h, w, _ = cv_img.shape
-                            start_y, end_y = int(h * 0.20), int(h * 0.55)
-                            start_x, end_x = int(w * 0.25), int(w * 0.75)
-                            plasma_zone = cv_img[start_y:end_y, start_x:end_x]
-                            avg_color = np.average(np.average(plasma_zone, axis=0), axis=0)
-                            avg_r, avg_g, _ = avg_color, avg_color, avg_color
-                            
-                            model_pred = "Yes" if (avg_r > (avg_g * 1.15) and avg_r > 100) else "No"
-                            
-                            # Draw box
-                            box_thickness = max(2, int(w * 0.01))
-                            cv2.rectangle(cv_img, (start_x, start_y), (end_x, end_y), (0, 255, 0), box_thickness)
-                            display_img = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
+                        # Check if a personalized trained model file exists in your repository
+                        if os.path.exists("hemolysis_model.pkl"):
+                            try:
+                                with open("hemolysis_model.pkl", "rb") as f:
+                                    trained_clf = pickle.load(f)
+                                # Use machine learning prediction (0 = No, 1 = Yes)
+                                pred_idx = trained_clf.predict([[avg_r, avg_g, avg_b]])[0]
+                                model_pred = "Yes" if pred_idx == 1 else "No"
+                            except:
+                                # Emergency fallback if model file fails to read
+                                model_pred = "Yes" if (avg_r > (avg_g * 1.15) and avg_r > 100) else "No"
                         else:
-                            model_pred = "No"
-                            display_img = img_bytes
-                        
+                            # Standard fallback rule until you run train_model.py the first time
+                            model_pred = "Yes" if (avg_r > (avg_g * 1.15) and avg_r > 100) else "No"              
                         # --- 2. INTERACTIVE USER FEEDBACK TRACKING ---
                         # Use the previously saved correction if the user already changed it during this session
                         default_index = 0 if model_pred == "No" else 1
