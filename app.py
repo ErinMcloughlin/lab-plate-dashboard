@@ -57,7 +57,7 @@ if st.session_state.current_page == "home":
         
         st.link_button(
             label="🌐 Open Venus Portal", 
-            url="https://harbinger-health.net", 
+            url="https://venus.harbinger-health.net/", 
             type="primary", 
             use_container_width=True
         )
