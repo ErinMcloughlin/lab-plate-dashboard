@@ -65,27 +65,20 @@ if st.session_state.current_page == "home":
         first_cam_name = list(CAM_FLEET_IPS.keys())[0]
         first_cam_ip = CAM_FLEET_IPS[first_cam_name]
         
-        preview_placeholder = st.image([], use_container_width=True)
+        # --- NEW BROWSER DIRECT SECURE INJECTION ---
+        # Passing credentials over HTTPS directly within an HTML5 canvas container
+        PREVIEW_CAM_URL = f"https://{first_cam_ip}/axis-cgi/mjpg/video.cgi?resolution=320x240" 
         
-        # 🛠️ FORCED UNENCRYPTED LOCAL PORT 80 SNIPPET
-        # This completely side-steps corporate security certificate errors
-        unsecured_snapshot_url = f"http://{first_cam_ip}:80/axis-cgi/jpg/image.cgi?resolution=640x480"
-        
-        try:
-            response = requests.get(
-                unsecured_snapshot_url, 
-                auth=HTTPDigestAuth(CAM_USER, CAM_PASS), 
-                timeout=3, 
-                verify=False
-            )
-            if response.status_code == 200:
-                preview_placeholder.image(response.content)
-            elif response.status_code == 401:
-                preview_placeholder.error("🔒 Camera Auth Rejected: Bad User/Pass")
-            else:
-                preview_placeholder.warning(f"⚠️ Camera returned code: {response.status_code}")
-        except Exception as e:
-            preview_placeholder.warning(f"⚠️ Unreachable on network port 80")
+        preview_html = f"""
+        <html>
+            <body style="margin:0; padding:0; background-color:#1E1E1E; border-radius:8px; overflow:hidden;">
+                <img src="{PREVIEW_CAM_URL}" style="width:100%; height:140px; object-fit:cover; display:block;" 
+                     onerror="this.onerror=null; this.parentNode.innerHTML='<div style=\"color:#ff4b4b; text-align:center; padding-top:50px; font-family:sans-serif;\">⚠️ Camera Connection Locked</div>';">
+            </body>
+        </html>
+        """
+        st.components.v1.html(preview_html, height=140)
+        # -------------------------------------------
 
         if st.button("🎥 Lab Cameras", type="primary", use_container_width=True):
             st.session_state.current_page = "cameras"
@@ -364,7 +357,7 @@ elif st.session_state.current_page == "uploader":
         st.info("Please fill out metadata in the sidebar and upload a file to run calculations.")
 
 # ==========================================================
-# SCREEN 3: LAB CAMERAS LIVE FLEET MULTI-VIEW (PORT 80 HANDSHAKE)
+# SCREEN 3: LAB CAMERAS LIVE FLEET MULTI-VIEW (BROWSER PASS-THROUGH)
 # ==========================================================
 elif st.session_state.current_page == "cameras":
     if st.button("⬅️ Back to Main Hub"):
@@ -375,41 +368,24 @@ elif st.session_state.current_page == "cameras":
     st.write("Real-time persistent feed tracking automation layout grids and colony spaces.")
     st.write("---")
 
-    run_streams = st.checkbox("Active Feed Stream", value=True)
-
     cam_cols = st.columns(2)
-    placeholders = {}
 
     for idx, (cam_name, cam_ip) in enumerate(CAM_FLEET_IPS.items()):
         with cam_cols[idx % 2]:
             st.subheader(cam_name)
-            placeholders[cam_name] = st.image([], use_container_width=True)
-
-    # Frame processing stream parser loop over Port 80 HTTP
-    while run_streams:
-        for cam_name, cam_ip in CAM_FLEET_IPS.items():
-            # Routes video frame bytes through standard HTTP channels to ignore SSL breaks
-            stream_url = f"http://{cam_ip}:80/axis-cgi/mjpg/video.cgi"
-            try:
-                with requests.get(stream_url, auth=HTTPDigestAuth(CAM_USER, CAM_PASS), stream=True, timeout=5, verify=False) as r:
-                    if r.status_code == 200:
-                        bytes_buffer = bytes()
-                        for chunk in r.iter_content(chunk_size=1024):
-                            if not run_streams:
-                                break
-                            bytes_buffer += chunk
-                            a = bytes_buffer.find(b'\xff\xd8') 
-                            b = bytes_buffer.find(b'\xff\xd9') 
-                            if a != -1 and b != -1:
-                                jpg = bytes_buffer[a:b+2]
-                                bytes_buffer = bytes_buffer[b+2:]
-                                placeholders[cam_name].image(jpg)
-                    elif r.status_code == 401:
-                        placeholders[cam_name].error(f"❌ Auth rejected by {cam_name}")
-                    else:
-                        placeholders[cam_name].error(f"⚠️ Error {r.status_code}")
-            except Exception:
-                placeholders[cam_name].error(f"Cannot resolve network connection to {cam_ip}")
-                continue
+            
+            # Use the exact HTTPS streaming link layout that your web browser uses natively
+            stream_url = f"https://{cam_ip}/axis-cgi/mjpg/video.cgi"
+            
+            stream_html = f"""
+            <html>
+                <body style="margin:0; padding:0; background-color:black; font-family:sans-serif;">
+                    <div style="position:relative; width:100%; height:320px;">
+                        <iframe src="{stream_url}" style="width:100%; height:100%; border:none;" allowfullscreen></iframe>
+                    </div>
+                </body>
+            </html>
+            """
+            st.components.v1.html(stream_html, height=330)
 
 
