@@ -23,7 +23,8 @@ CAM_PASS = "FL67Rules20$"  # Literal string password
 CAM_FLEET_IPS = {
     "easyBlood1_Camera1": "10.76.32.117",
     "easyBlood1_Camera2" : "10.76.32.103",
-    "easyBlood4": "10.76.32.115",
+    "easyBlood4_Camera1": "10.76.32.115",
+    "easyBlood4_Camera2": "10.76.32.116",
     "Presto1_Camera1": "10.76.32.112", 
     "Presto1_Camera_2" : "10.76.32.111",
     "Presto2": "10.76.32.114",      
