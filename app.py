@@ -366,38 +366,81 @@ elif st.session_state.current_page == "uploader":
         st.info("Please fill out metadata in the sidebar and upload a file to run calculations.")
 
 # ==========================================================
-# SCREEN 3: LAB CAMERAS LIVE FLEET MULTI-VIEW (WORKING BROWSER-DIRECT)
+# SCREEN 3: LAB CAMERAS LIVE FLEET MULTI-VIEW (WITH FULLSCREEN MAXIMIZE)
 # ==========================================================
 elif st.session_state.current_page == "cameras":
-    if st.button("⬅️ Back to Main Hub"):
-        st.session_state.current_page = "home"
-        st.rerun()
+    # Initialize a session state flag to track if we are focusing on a single camera
+    if "maximized_cam" not in st.session_state:
+        st.session_state.maximized_cam = None
+
+    # Custom navigation row
+    nav_col1, nav_col2 = st.columns([1, 5])
+    with nav_col1:
+        if st.button("⬅️ Back to Hub", use_container_width=True):
+            st.session_state.current_page = "home"
+            st.session_state.maximized_cam = None  # Reset focus on exit
+            st.rerun()
+    with nav_col2:
+        if st.session_state.maximized_cam:
+            if st.button(f"🔍 Show All {len(CAM_FLEET_IPS)} Cameras", type="secondary"):
+                st.session_state.maximized_cam = None
+                st.rerun()
 
     st.title("🎥 Lab Camera Command Center")
     st.write("Real-time persistent feed tracking automation layout grids and colony spaces.")
     st.write("---")
 
-    # Clean 2-column layout grid to display side-by-side feeds
-    cam_cols = st.columns(2)
+    # --------------------------------------------------
+    # VIEW MODE A: EXPANDED SINGLE CAMERA FULLSCREEN MODE
+    # --------------------------------------------------
+    if st.session_state.maximized_cam and st.session_state.maximized_cam in CAM_FLEET_IPS:
+        cam_name = st.session_state.maximized_cam
+        cam_ip = CAM_FLEET_IPS[cam_name]
+        
+        st.subheader(f"🔍 Fullscreen View: {cam_name}")
+        stream_url = f"https://{cam_ip}/axis-cgi/mjpg/video.cgi"
+        
+        # High height setting (650px) to comfortably stretch across a modern monitor screen
+        fullscreen_html = f"""
+        <html>
+            <body style="margin:0; padding:0; background-color:black; font-family:sans-serif; overflow:hidden;">
+                <div style="position:relative; width:100%; height:640px;">
+                    <img src="{stream_url}" style="width:100%; height:100%; object-fit:contain; display:block;">
+                </div>
+            </body>
+        </html>
+        """
+        st.components.v1.html(fullscreen_html, height=650)
 
-    # Loop through every camera defined in your global settings
-    for idx, (cam_name, cam_ip) in enumerate(CAM_FLEET_IPS.items()):
-        with cam_cols[idx % 2]:
-            st.subheader(cam_name)
-            
-            # Using the exact working MJPEG streaming endpoint configuration
-            stream_url = f"https://{cam_ip}/axis-cgi/mjpg/video.cgi"
-            
-            # This uses the exact HTML structure that successfully loaded your preview thumbnail!
-            stream_html = f"""
-            <html>
-                <body style="margin:0; padding:0; background-color:black; font-family:sans-serif; overflow:hidden;">
-                    <div style="position:relative; width:100%; height:320px;">
-                        <img src="{stream_url}" style="width:100%; height:100%; object-fit:contain; display:block;" 
-                             onerror="this.onerror=null; this.parentNode.innerHTML='<div style=\"color:#ff4b4b; display:flex; justify-content:center; align-items:center; height:100%; flex-direction:column;\"><span>⚠️</span><span style=\"margin-top:8px;\">{cam_name} Offline</span></div>';">
-                    </div>
-                </body>
-            </html>
-            """
-            st.components.v1.html(stream_html, height=330)
+    # --------------------------------------------------
+    # VIEW MODE B: STANDARD MULTI-VIEW GRID MODE
+    # --------------------------------------------------
+    else:
+        cam_cols = st.columns(2)
 
+        for idx, (cam_name, cam_ip) in enumerate(CAM_FLEET_IPS.items()):
+            with cam_cols[idx % 2]:
+                # Inline Header layout grouping with a dynamic Maximize action link button
+                head_col1, head_col2 = st.columns([3, 1])
+                with head_col1:
+                    st.subheader(cam_name)
+                with head_col2:
+                    # Clicking this flags the current name in the app's persistent session router memory
+                    if st.button("🔲 Maximize", key=f"max_{idx}", use_container_width=True):
+                        st.session_state.maximized_cam = cam_name
+                        st.rerun()
+                
+                stream_url = f"https://{cam_ip}/axis-cgi/mjpg/video.cgi"
+                
+                stream_html = f"""
+                <html>
+                    <body style="margin:0; padding:0; background-color:black; font-family:sans-serif; overflow:hidden;">
+                        <div style="position:relative; width:100%; height:320px;">
+                            <img src="{stream_url}" style="width:100%; height:100%; object-fit:contain; display:block;" 
+                                 onerror="this.onerror=null; this.parentNode.innerHTML='<div style=\"color:#ff4b4b; display:flex; justify-content:center; align-items:center; height:100%; flex-direction:column;\"><span>⚠️</span><span style=\"margin-top:8px;\">{cam_name} Offline</span></div>';">
+                        </div>
+                    </body>
+                </html>
+                """
+                st.components.v1.html(stream_html, height=330)
+                st.write("") # Spacing margin layout buffer
