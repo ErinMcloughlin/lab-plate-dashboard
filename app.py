@@ -43,7 +43,7 @@ if "current_page" not in st.session_state:
 # ==========================================================
 if st.session_state.current_page == "home":
     st.title("🧪 Laboratory Command Center")
-    st.write("Welcome to the Harbinger Health portal. Select a module below to begin your workflow.")
+    st.write("Welcome to the Harbinger Health portal. Select a task to begin working.")
     st.write("---")
     
     col1, col2, col3, col4 = st.columns(4)
