@@ -58,24 +58,41 @@ if st.session_state.current_page == "home":
         st.subheader("📷 Visual Inspections")
         st.write("Trigger automated deck imagery, barcode scanning, or colony counts.")
         
-        # Grab the first camera to show as a quick panel thumbnail
+        # Grab the first camera from your fleet list automatically
         first_cam_name = list(CAM_FLEET_IPS.keys())[0]
         first_cam_ip = CAM_FLEET_IPS[first_cam_name]
         
-        # Open an empty placeholder image box
         preview_placeholder = st.image([], use_container_width=True)
         
-        # Use Python to grab an authenticated snapshot from the device backend
-        snapshot_url = f"https://{first_cam_ip}/axis-cgi/jpg/image.cgi"
-        try:
-            # verify=False instructs python to ignore self-signed internal security warnings
-            response = requests.get(snapshot_url, auth=HTTPDigestAuth(CAM_USER, CAM_PASS), timeout=2, verify=False)
-            if response.status_code == 200:
-                preview_placeholder.image(response.content)
-            else:
-                preview_placeholder.error("Auth Fail / Check Pass")
-        except Exception:
-            preview_placeholder.warning(f"⚠️ {first_cam_name} Offline")
+        # 🛠️ THE SECURE FALLBACK TRIAGE ROUTINE
+        # We try HTTPS first. If local corporate firewalls block it, we fall back to HTTP.
+        urls_to_test = [
+            f"https://{first_cam_ip}/axis-cgi/jpg/image.cgi?resolution=640x480",
+            f"http://{first_cam_ip}/axis-cgi/jpg/image.cgi?resolution=640x480"
+        ]
+        
+        success = False
+        for url in urls_to_test:
+            try:
+                response = requests.get(
+                    url, 
+                    auth=HTTPDigestAuth(CAM_USER, CAM_PASS), 
+                    timeout=2, 
+                    verify=False  # Strips away self-signed corporate certificate blocks
+                )
+                if response.status_code == 200:
+                    preview_placeholder.image(response.content)
+                    success = True
+                    break  # Found a working path, exit loop
+                elif response.status_code == 401:
+                    preview_placeholder.error("🔒 Camera Auth Rejected: Bad User/Pass")
+                    success = True
+                    break
+            except Exception:
+                continue  # Skip port failures silently and check the next url
+                
+        if not success:
+            preview_placeholder.warning(f"⚠️ Could not reach {first_cam_ip} via HTTP or HTTPS")
 
         if st.button("🎥 Lab Cameras", type="primary", use_container_width=True):
             st.session_state.current_page = "cameras"
