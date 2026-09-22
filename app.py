@@ -337,7 +337,6 @@ elif st.session_state.current_page == "uploader":
     else:
         st.info("Please fill out metadata in the sidebar and upload a file to run calculations.")
 
-
 # ==========================================================
 # SCREEN 3: LAB CAMERAS LIVE FLEET MULTI-VIEW (AUTO-LOOP)
 # ==========================================================
@@ -350,16 +349,18 @@ elif st.session_state.current_page == "cameras":
     st.write("Real-time persistent feed tracking automation layout grids and colony spaces.")
     st.write("---")
 
-    # This dynamically injects your CAM_USER and CAM_PASS variables into each string automatically
+    # 1. ADD SECURITY CREDENTIALS IN THE RTSP FORMAT
+    # Syntax pattern: rtsp://username:password@IP_ADDRESS:554/axis-media/media.amp
+    # Change 'root' and 'pass' to matches your camera passwords
     camera_fleet = {
-        "easyBlood1": f"rtsp://{CAM_USER}:{CAM_PASS}@10.76.32.117/axis-media/media.amp",
-        "Presto2": f"rtsp://{CAM_USER}:{CAM_PASS}@10.76.32.114/axis-media/media.amp",
+        "Deck Cam A (Overhead)": "rtsp://root:pass@10.76.32.117/axis-media/media.amp",
+        "Deck Cam B (Side)": "rtsp://root:pass@10.76.32.114/axis-media/media.amp",
     }
 
-    # Add an explicit stop control checkbox so users can freeze the processing loop
+    # 2. Add an explicit stop control checkbox so users can freeze the processing loop
     run_streams = st.checkbox("Active Feed Stream", value=True)
 
-    # Create fixed layout window rows
+    # 3. Create fixed layout window rows
     cam_cols = st.columns(len(camera_fleet))
     placeholders = {}
     caps = {}
@@ -368,6 +369,7 @@ elif st.session_state.current_page == "cameras":
     for idx, (cam_name, rtsp_url) in enumerate(camera_fleet.items()):
         with cam_cols[idx]:
             st.subheader(cam_name)
+            # This creates a steady UI image frame box that we will overwrite frame-by-frame
             placeholders[cam_name] = st.image([], use_container_width=True)
             
             # Start backend background worker stream connection via OpenCV
@@ -377,7 +379,7 @@ elif st.session_state.current_page == "cameras":
             else:
                 st.error(f"Could not connect to network socket for {cam_name}")
 
-    # Infinite rendering cycle loop (Keeps updating image states asynchronously)
+    # 4. Infinite rendering cycle loop (Keeps updating image states asynchronously)
     while run_streams and len(caps) > 0:
         for cam_name, cap in caps.items():
             ret, frame = cap.read()
@@ -394,3 +396,5 @@ elif st.session_state.current_page == "cameras":
     # Clean release hook if the loop is broken or page state redirects
     for cap in caps.values():
         cap.release()
+
+
