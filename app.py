@@ -3,14 +3,13 @@ import os
 import pandas as pd
 import zipfile
 from io import BytesIO
-# Make sure to add these imports at the very top of your app.py file:
 import cv2
 import numpy as np
 from PIL import Image
 import pickle
-import requests  # <--- NEW
-from requests.auth import HTTPDigestAuth  # <--- NEW: Forces secure password handshake
-import urllib3  # <--- NEW
+import requests  
+from requests.auth import HTTPDigestAuth  #Forces secure password handshake
+import urllib3  
 
 st.set_page_config(page_title="Lab Portal", page_icon="🧪", layout="wide")
 # --- AXIS CAMERA GLOBAL SETTINGS ---
