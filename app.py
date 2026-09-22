@@ -349,18 +349,16 @@ elif st.session_state.current_page == "cameras":
     st.write("Real-time persistent feed tracking automation layout grids and colony spaces.")
     st.write("---")
 
-    # 1. ADD SECURITY CREDENTIALS IN THE RTSP FORMAT
-    # Syntax pattern: rtsp://username:password@IP_ADDRESS:554/axis-media/media.amp
-    # Change 'root' and 'pass' to matches your camera passwords
+    # 1. FIX: Force specific Axis camera media streams using the H264 channel profile query
     camera_fleet = {
-        "Deck Cam A (Overhead)": "rtsp://root:pass@10.76.32.117/axis-media/media.amp",
-        "Deck Cam B (Side)": "rtsp://root:pass@10.76.32.114/axis-media/media.amp",
+        "Deck Cam A (Overhead)": f"rtsp://{CAM_USER}:{CAM_PASS}@192.168.1.50:554/axis-media/media.amp?video=1",
+        "Deck Cam B (Side)": f"rtsp://{CAM_USER}:{CAM_PASS}@192.168.1.51:554/axis-media/media.amp?video=1",
     }
 
-    # 2. Add an explicit stop control checkbox so users can freeze the processing loop
+    # Add an explicit stop control checkbox so users can freeze the processing loop
     run_streams = st.checkbox("Active Feed Stream", value=True)
 
-    # 3. Create fixed layout window rows
+    # Create fixed layout window rows
     cam_cols = st.columns(len(camera_fleet))
     placeholders = {}
     caps = {}
@@ -369,32 +367,31 @@ elif st.session_state.current_page == "cameras":
     for idx, (cam_name, rtsp_url) in enumerate(camera_fleet.items()):
         with cam_cols[idx]:
             st.subheader(cam_name)
-            # This creates a steady UI image frame box that we will overwrite frame-by-frame
             placeholders[cam_name] = st.image([], use_container_width=True)
             
-            # Start backend background worker stream connection via OpenCV
-            cap = cv2.VideoCapture(rtsp_url)
+            # 2. FIX: Force FFMPEG backend to use TCP instead of UDP to bypass local socket timeouts
+            import os
+            os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
+            
+            cap = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
+            
             if cap.isOpened():
                 caps[cam_name] = cap
             else:
                 st.error(f"Could not connect to network socket for {cam_name}")
 
-    # 4. Infinite rendering cycle loop (Keeps updating image states asynchronously)
+    # Infinite rendering cycle loop (Keeps updating image states asynchronously)
     while run_streams and len(caps) > 0:
         for cam_name, cap in caps.items():
             ret, frame = cap.read()
             if ret:
-                # Convert color spectrum values from BGR (OpenCV) to RGB (Streamlit UI layout requirements)
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                
-                # Instantly overwrite the specific video widget block 
                 placeholders[cam_name].image(rgb_frame, channels="RGB")
             else:
-                # Re-attempt link initialization if connection drops momentarily
                 cap.open(camera_fleet[cam_name])
 
-    # Clean release hook if the loop is broken or page state redirects
     for cap in caps.values():
         cap.release()
+
 
 
