@@ -66,7 +66,7 @@ if st.session_state.current_page == "home":
             
     # COLUMN 3: Camera Inspection Tool
     with col3:
-        st.subheader("📷 Visual Inspections")
+        st.subheader("🎥 Cameras")
         st.write("Trigger automated deck imagery, barcode scanning, or colony counts.")
                 
         if st.button("🎥 Lab Cameras", type="primary", use_container_width=True):
