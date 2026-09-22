@@ -425,7 +425,7 @@ elif st.session_state.current_page == "cameras":
                     st.subheader(cam_name)
                 with head_col2:
                     # Clicking this flags the current name in the app's persistent session router memory
-                    if st.button("🔲 Maximize", key=f"max_{idx}", use_container_width=True):
+                    if st.button("🔲 Fullscreen", key=f"max_{idx}", use_container_width=True):
                         st.session_state.maximized_cam = cam_name
                         st.rerun()
                 
