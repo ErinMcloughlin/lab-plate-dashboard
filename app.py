@@ -13,7 +13,16 @@ from io import BytesIO
 st.set_page_config(page_title="Lab Portal", page_icon="🧪", layout="wide")
 # --- AXIS CAMERA GLOBAL SETTINGS ---
 CAM_USER = "root"
-CAM_PASS = "FL67Rules20$"  
+CAM_PASS = "FL67Rules20$"  # <-- Put your real camera password here
+
+# Add as many cameras as you want here by adding new rows with their unique IPs
+CAM_FLEET_IPS = {
+    "Deck Cam A (Overhead)": "10.76.32.117",
+    "Deck Cam B (Side)": "10.76.32.118",      # <-- Replace with your second camera's real IP
+    "Incubator Colony Cam": "10.76.32.119",   # <-- Replace with your third camera's real IP
+    "Centrifuge Station": "10.76.32.120"     # <-- Replace with your fourth camera's real IP
+}
+
 
 # 1. INITIALIZE SESSION STATE ROUTING (Tracks which screen we are viewing)
 if "current_page" not in st.session_state:
@@ -50,13 +59,16 @@ if st.session_state.current_page == "home":
         st.subheader("📷 Visual Inspections")
         st.write("Trigger automated deck imagery, barcode scanning, or colony counts.")
         
-        # Automatically builds: http://192.168.1
-        PREVIEW_CAM_URL = f"http://{CAM_USER}:{CAM_PASS}@192.168.1.50/axis-cgi/mjpg/video.cgi" 
+        # Grab the very first camera name and IP from your fleet list automatically
+        first_cam_name = list(CAM_FLEET_IPS.keys())[0]
+        first_cam_ip = CAM_FLEET_IPS[first_cam_name]
+        
+        PREVIEW_CAM_URL = f"https://{CAM_USER}:{CAM_PASS}@{first_cam_ip}/axis-cgi/mjpg/video.cgi" 
         
         preview_html = f"""
         <html>
             <body style="margin:0; padding:0; background-color:#1E1E1E; border-radius:8px; overflow:hidden;">
-                <img src="{PREVIEW_CAM_URL}" style="width:100%; height:140px; object-fit:cover; display:block;" onerror="this.onerror=null; this.src='https://placehold.co';">
+                <img src="{PREVIEW_CAM_URL}" style="width:100%; height:140px; object-fit:cover; display:block;" onerror="this.onerror=null; this.src='https://placehold.co{first_cam_name}+Offline';">
             </body>
         </html>
         """
@@ -65,6 +77,7 @@ if st.session_state.current_page == "home":
         if st.button("🎥 Lab Cameras", type="primary", use_container_width=True):
             st.session_state.current_page = "cameras"
             st.rerun()
+
     # COLUMN 4: Automation Deck (Linked to Venus Portal)
     with col4:
         st.subheader("🔬 Automation Deck")
@@ -338,7 +351,7 @@ elif st.session_state.current_page == "uploader":
         st.info("Please fill out metadata in the sidebar and upload a file to run calculations.")
 
 # ==========================================================
-# SCREEN 3: LAB CAMERAS LIVE FLEET MULTI-VIEW (AUTO-LOOP)
+# SCREEN 3: LAB CAMERAS LIVE FLEET MULTI-VIEW
 # ==========================================================
 elif st.session_state.current_page == "cameras":
     if st.button("⬅️ Back to Main Hub"):
@@ -349,49 +362,34 @@ elif st.session_state.current_page == "cameras":
     st.write("Real-time persistent feed tracking automation layout grids and colony spaces.")
     st.write("---")
 
-    # 1. FIX: Force specific Axis camera media streams using the H264 channel profile query
-    camera_fleet = {
-        "Deck Cam A (Overhead)": f"rtsp://{CAM_USER}:{CAM_PASS}@10.76.32.117:554/axis-media/media.amp?video=1",
-        "Deck Cam B (Side)": f"rtsp://{CAM_USER}:{CAM_PASS}@192.168.1.51:554/axis-media/media.amp?video=1",
-    }
+    # Set up a clean grid layout (2 columns wide)
+    cam_cols = st.columns(2)
 
-    # Add an explicit stop control checkbox so users can freeze the processing loop
-    run_streams = st.checkbox("Active Feed Stream", value=True)
-
-    # Create fixed layout window rows
-    cam_cols = st.columns(len(camera_fleet))
-    placeholders = {}
-    caps = {}
-
-    # Initialize a clean canvas placeholder box for each camera slot
-    for idx, (cam_name, rtsp_url) in enumerate(camera_fleet.items()):
-        with cam_cols[idx]:
+    # Loop through every camera defined in your global settings
+    for idx, (cam_name, cam_ip) in enumerate(CAM_FLEET_IPS.items()):
+        # This math alternates between column 0 and column 1
+        with cam_cols[idx % 2]:
             st.subheader(cam_name)
-            placeholders[cam_name] = st.image([], use_container_width=True)
             
-            # 2. FIX: Force FFMPEG backend to use TCP instead of UDP to bypass local socket timeouts
-            import os
-            os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
+            stream_url = f"https://{CAM_USER}:{CAM_PASS}@{cam_ip}/axis-cgi/mjpg/video.cgi"
             
-            cap = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
-            
-            if cap.isOpened():
-                caps[cam_name] = cap
-            else:
-                st.error(f"Could not connect to network socket for {cam_name}")
-
-    # Infinite rendering cycle loop (Keeps updating image states asynchronously)
-    while run_streams and len(caps) > 0:
-        for cam_name, cap in caps.items():
-            ret, frame = cap.read()
-            if ret:
-                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                placeholders[cam_name].image(rgb_frame, channels="RGB")
-            else:
-                cap.open(camera_fleet[cam_name])
-
-    for cap in caps.values():
-        cap.release()
+            # Embed native HTML image container for each camera
+            stream_html = f"""
+            <html>
+                <body style="margin:0; padding:0; background-color:black; font-family:sans-serif;">
+                    <div style="position:relative; width:100%; height:320px;">
+                        <img src="{stream_url}" style="width:100%; height:100%; object-fit:contain; display:block;" 
+                             onerror="document.getElementById('err-{idx}').style.display='flex';">
+                        <div id="err-{idx}" style="position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(30,30,30,0.9); color:#ff4b4b; display:none; justify-content:center; align-items:center; flex-direction:column;">
+                            <span style="font-size:24px; margin-bottom:8px;">⚠️</span>
+                            <span>{cam_name} Offline</span>
+                            <small style="color:#aaa; margin-top:4px;">Check IP: {cam_ip}</small>
+                        </div>
+                    </div>
+                </body>
+            </html>
+            """
+            st.components.v1.html(stream_html, height=330)
 
 
 
