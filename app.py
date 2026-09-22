@@ -14,7 +14,7 @@ import urllib.parse
 st.set_page_config(page_title="Lab Portal", page_icon="🧪", layout="wide")
 # --- AXIS CAMERA GLOBAL SETTINGS ---
 CAM_USER = "root"
-CAM_PASS = "FL67Rules20$"  # <-- Put your real camera password here
+RAW_PASS = "FL67Rules20$"  # <-- Put your real camera password here
 CAM_PASS = urllib.parse.quote_plus(RAW_PASS) 
 
 # Add as many cameras as you want here by adding new rows with their unique IPs
