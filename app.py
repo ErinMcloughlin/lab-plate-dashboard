@@ -351,10 +351,10 @@ elif st.session_state.current_page == "cameras":
     # TODO: Replace these placeholder IPs with your real local or public Axis IPs
     # Default Axis path for MJPEG is /axis-cgi/mjpg/video.cgi
     camera_fleet = {
-        "Deck Cam A (Overhead)": "http://192.168.1",
-        "Deck Cam B (Side)": "http://192.168.1",
-        "Incubator Colony Cam": "http://192.168.1",
-        "Centrifuge Station": "http://192.168.1"
+        "easyBlood1": "http://10.76.32.117",
+        "Presto2": "http://10.76.32.114",
+        "Presto1": "http://10.76.32.112",
+        "easyBlood4": "http://10.76.32.115"
     }
 
     # Split cameras into a clean 2x2 multi-view grid layout
