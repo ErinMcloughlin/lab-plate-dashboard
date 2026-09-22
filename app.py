@@ -351,7 +351,7 @@ elif st.session_state.current_page == "cameras":
 
     # 1. FIX: Force specific Axis camera media streams using the H264 channel profile query
     camera_fleet = {
-        "Deck Cam A (Overhead)": f"rtsp://{CAM_USER}:{CAM_PASS}@192.168.1.50:554/axis-media/media.amp?video=1",
+        "Deck Cam A (Overhead)": f"rtsp://{CAM_USER}:{CAM_PASS}@10.76.32.117:554/axis-media/media.amp?video=1",
         "Deck Cam B (Side)": f"rtsp://{CAM_USER}:{CAM_PASS}@192.168.1.51:554/axis-media/media.amp?video=1",
     }
 
