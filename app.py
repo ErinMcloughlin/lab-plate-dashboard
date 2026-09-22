@@ -357,7 +357,7 @@ elif st.session_state.current_page == "uploader":
         st.info("Please fill out metadata in the sidebar and upload a file to run calculations.")
 
 # ==========================================================
-# SCREEN 3: LAB CAMERAS LIVE FLEET MULTI-VIEW (BROWSER PASS-THROUGH)
+# SCREEN 3: LAB CAMERAS LIVE FLEET MULTI-VIEW (WORKING BROWSER-DIRECT)
 # ==========================================================
 elif st.session_state.current_page == "cameras":
     if st.button("⬅️ Back to Main Hub"):
@@ -368,24 +368,27 @@ elif st.session_state.current_page == "cameras":
     st.write("Real-time persistent feed tracking automation layout grids and colony spaces.")
     st.write("---")
 
+    # Clean 2-column layout grid to display side-by-side feeds
     cam_cols = st.columns(2)
 
+    # Loop through every camera defined in your global settings
     for idx, (cam_name, cam_ip) in enumerate(CAM_FLEET_IPS.items()):
         with cam_cols[idx % 2]:
             st.subheader(cam_name)
             
-            # Use the exact HTTPS streaming link layout that your web browser uses natively
+            # Using the exact working MJPEG streaming endpoint configuration
             stream_url = f"https://{cam_ip}/axis-cgi/mjpg/video.cgi"
             
+            # This uses the exact HTML structure that successfully loaded your preview thumbnail!
             stream_html = f"""
             <html>
-                <body style="margin:0; padding:0; background-color:black; font-family:sans-serif;">
+                <body style="margin:0; padding:0; background-color:black; font-family:sans-serif; overflow:hidden;">
                     <div style="position:relative; width:100%; height:320px;">
-                        <iframe src="{stream_url}" style="width:100%; height:100%; border:none;" allowfullscreen></iframe>
+                        <img src="{stream_url}" style="width:100%; height:100%; object-fit:contain; display:block;" 
+                             onerror="this.onerror=null; this.parentNode.innerHTML='<div style=\"color:#ff4b4b; display:flex; justify-content:center; align-items:center; height:100%; flex-direction:column;\"><span>⚠️</span><span style=\"margin-top:8px;\">{cam_name} Offline</span></div>';">
                     </div>
                 </body>
             </html>
             """
             st.components.v1.html(stream_html, height=330)
-
 
