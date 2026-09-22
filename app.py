@@ -58,7 +58,7 @@ if st.session_state.current_page == "home":
             
     # COLUMN 2: Tube Hemolysis & Volume Inspection Tool
     with col2:
-        st.subheader("🩸 Tube Inspection")
+        st.subheader("🩸 Hemolysis Check")
         st.write("Upload tube images from your easyBlood1 folder to screen for hemolysis and volume.")
         if st.button("🔍 Inspect Tubes", type="primary", use_container_width=True):
             st.session_state.current_page = "hemolysis_inspector"
@@ -94,7 +94,7 @@ if st.session_state.current_page == "home":
 
     # COLUMN 4: Automation Deck (Linked to Venus Portal)
     with col4:
-        st.subheader("🔬 Automation Deck")
+        st.subheader("🔬 Instrument Dashboard")
         st.write("Direct integration matrix with the company's Hamilton Venus automation pipelines.")
         
         # 🎨 SWITCHED TO TYPE="PRIMARY" TO MATCH NAVY BLUE / WHITE WRITING THEME
