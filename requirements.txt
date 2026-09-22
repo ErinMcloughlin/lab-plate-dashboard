@@ -3,4 +3,6 @@ pandas
 openpyxl
 opencv-python-headless
 Pillow
-
+streamlit
+opencv-python-headless
+numpy
