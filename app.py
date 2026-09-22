@@ -386,7 +386,7 @@ elif st.session_state.current_page == "cameras":
                 st.rerun()
 
     st.title("🎥 Lab Camera Command Center")
-    st.write("Real-time persistent feed tracking automation layout grids and colony spaces.")
+    st.write("Real-time persistent feed of automation instruments.")
     st.write("---")
 
     # --------------------------------------------------
