@@ -21,10 +21,10 @@ CAM_USER = "root"
 CAM_PASS = "FL67Rules20$"  # Literal string password
 
 CAM_FLEET_IPS = {
-    "Deck Cam A (Overhead)": "10.76.32.117",
-    "Deck Cam B (Side)": "10.76.32.118",      
-    "Incubator Colony Cam": "10.76.32.119",   
-    "Centrifuge Station": "10.76.32.120"     
+    "easyBlood1": "10.76.32.117",
+    "Presto2": "10.76.32.114",      
+    "Presto1": "10.76.32.112",   
+    "easyBlood4": "10.76.32.115"     
 }
 
 # 1. INITIALIZE SESSION STATE ROUTING (Tracks which screen we are viewing)
