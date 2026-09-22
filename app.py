@@ -46,6 +46,21 @@ if st.session_state.current_page == "home":
     with col3:
         st.subheader("📷 Visual Inspections")
         st.write("Trigger automated deck imagery, barcode scanning, or colony counts.")
+        
+        # --- NEW LIVE CAMERA PREVIEW FEED ---
+        # Change this URL to your actual Axis camera IP / Endpoint
+        PREVIEW_CAM_URL = "http://192.168.1" 
+        
+        preview_html = f"""
+        <html>
+            <body style="margin:0; padding:0; background-color:#1E1E1E; border-radius:8px; overflow:hidden;">
+                <img src="{PREVIEW_CAM_URL}" style="width:100%; height:140px; object-fit:cover; display:block;" onerror="this.onerror=null; this.src='https://placehold.co';">
+            </body>
+        </html>
+        """
+        st.components.v1.html(preview_html, height=140)
+        # ------------------------------------
+
         if st.button("🎥 Lab Cameras", type="primary", use_container_width=True):
             st.session_state.current_page = "cameras"
             st.rerun()
@@ -320,39 +335,49 @@ elif st.session_state.current_page == "uploader":
     else:
         st.info("Please fill out metadata in the sidebar and upload a file to run calculations.")
 
+
 # ==========================================================
-# SCREEN 3: THE LAB CAMERA SCREEN 
+# SCREEN 3: LAB CAMERAS LIVE FLEET MULTI-VIEW
 # ==========================================================
 elif st.session_state.current_page == "cameras":
     if st.button("⬅️ Back to Main Hub"):
         st.session_state.current_page = "home"
         st.rerun()
 
-    st.title("📷 Integrated Lab Cameras & Scanning")
-    st.write("Access your automation deck camera feed below.")
-    
-    st.info("💡 Note: To access this feed, your computer must be connected to the company's internal network or VPN.")
-    
+    st.title("🎥 Lab Camera Command Center")
+    st.write("Real-time persistent feed tracking automation layout grids and colony spaces.")
     st.write("---")
-    
-    # 📐 PUSH BUTTON TO THE RIGHT HAND SIDE USING COLUMNS
-    # Create 3 columns. col1 and col2 will act as empty space on the left.
-    col1, col2, col3 = st.columns(3)
-    
-    # Place the button strictly inside the right-most column (col3)
-    with col3:
-        camera_url = "http://10.76.32.104"
-        st.link_button(
-            label="🎥 Developmental Instrument", 
-            url=camera_url, 
-            type="primary", 
-            use_container_width=True
-        )
-    
-    st.write("---")
-    st.write("📊 **Troubleshooting Steps if the camera page won't load:**")
-    st.markdown("""
-    1. Confirm you are on the **Harbinger Health internal Wi-Fi** or corporate VPN.
-    2. Check that the camera hardware box is powered on.
-    3. If the camera page asks for a specific login or port, contact your automation engineer.
-    """)
+
+    # TODO: Replace these placeholder IPs with your real local or public Axis IPs
+    # Default Axis path for MJPEG is /axis-cgi/mjpg/video.cgi
+    camera_fleet = {
+        "Deck Cam A (Overhead)": "http://192.168.1",
+        "Deck Cam B (Side)": "http://192.168.1",
+        "Incubator Colony Cam": "http://192.168.1",
+        "Centrifuge Station": "http://192.168.1"
+    }
+
+    # Split cameras into a clean 2x2 multi-view grid layout
+    cam_cols = st.columns(2)
+
+    for idx, (cam_name, stream_url) in enumerate(camera_fleet.items()):
+        # Alternate columns (0 and 1)
+        with cam_cols[idx % 2]:
+            st.subheader(cam_name)
+            
+            # Embed native HTML image container that continuously pulls stream bytes from the Axis device
+            stream_html = f"""
+            <html>
+                <body style="margin:0; padding:0; background-color:black; font-family:sans-serif;">
+                    <div style="position:relative; width:100%; height:320px;">
+                        <img src="{stream_url}" style="width:100%; height:100%; object-fit:contain; display:block;" 
+                             onerror="document.getElementById('err-{idx}').style.display='flex';">
+                        <div id="err-{idx}" style="position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(30,30,30,0.9); color:#ff4b4b; display:none; justify-content:center; align-items:center; flex-direction:column;">
+                            <span style="font-size:24px; margin-bottom:8px;">⚠️</span>
+                            <span>Feed Offline or Local Network Blocked</span>
+                        </div>
+                    </div>
+                </body>
+            </html>
+            """
+            st.components.v1.html(stream_html, height=330)
