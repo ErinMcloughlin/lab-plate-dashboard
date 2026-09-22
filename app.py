@@ -8,16 +8,14 @@ import cv2
 import numpy as np
 from PIL import Image
 import pickle
-from io import BytesIO
-import urllib.parse
+import requests  # <--- NEW
+from requests.auth import HTTPDigestAuth  # <--- NEW: Forces secure password handshake
 
 st.set_page_config(page_title="Lab Portal", page_icon="🧪", layout="wide")
 # --- AXIS CAMERA GLOBAL SETTINGS ---
 CAM_USER = "root"
-RAW_PASS = "FL67Rules20$"  # <-- Put your real camera password here
-CAM_PASS = urllib.parse.quote_plus(RAW_PASS) 
+CAM_PASS = "FL67Rules20$"  # <--- Keep the literal password here. The python backend will parse it safely!
 
-# Add as many cameras as you want here by adding new rows with their unique IPs
 CAM_FLEET_IPS = {
     "Deck Cam A (Overhead)": "10.76.32.117",
     "Deck Cam B (Side)": "10.76.32.118",      
@@ -60,26 +58,29 @@ if st.session_state.current_page == "home":
         st.subheader("📷 Visual Inspections")
         st.write("Trigger automated deck imagery, barcode scanning, or colony counts.")
         
-        # Grab the very first camera name and IP from your fleet list automatically
+        # Grab the first camera to show as a quick panel thumbnail
         first_cam_name = list(CAM_FLEET_IPS.keys())[0]
         first_cam_ip = CAM_FLEET_IPS[first_cam_name]
         
-        PREVIEW_CAM_URL = f"https://{CAM_USER}:{CAM_PASS}@{first_cam_ip}/axis-cgi/mjpg/video.cgi" 
+        # Open an empty placeholder image box
+        preview_placeholder = st.image([], use_container_width=True)
         
-        # FIX: Repaired the placeholder fallback path string structure
-        preview_html = f"""
-        <html>
-            <body style="margin:0; padding:0; background-color:#1E1E1E; border-radius:8px; overflow:hidden;">
-                <img src="{PREVIEW_CAM_URL}" style="width:100%; height:140px; object-fit:cover; display:block;" onerror="this.onerror=null; this.src='https://placehold.co';">
-            </body>
-        </html>
-        """
-        st.components.v1.html(preview_html, height=140)
+        # Use Python to grab an authenticated snapshot from the device backend
+        snapshot_url = f"https://{first_cam_ip}/axis-cgi/jpg/image.cgi"
+        try:
+            # verify=False instructs python to ignore self-signed internal security warnings
+            response = requests.get(snapshot_url, auth=HTTPDigestAuth(CAM_USER, CAM_PASS), timeout=2, verify=False)
+            if response.status_code == 200:
+                preview_placeholder.image(response.content)
+            else:
+                preview_placeholder.error("Auth Fail / Check Pass")
+        except Exception:
+            preview_placeholder.warning(f"⚠️ {first_cam_name} Offline")
 
         if st.button("🎥 Lab Cameras", type="primary", use_container_width=True):
             st.session_state.current_page = "cameras"
             st.rerun()
-            
+
     # COLUMN 4: Automation Deck (Linked to Venus Portal)
     with col4:
         st.subheader("🔬 Automation Deck")
@@ -353,7 +354,7 @@ elif st.session_state.current_page == "uploader":
         st.info("Please fill out metadata in the sidebar and upload a file to run calculations.")
 
 # ==========================================================
-# SCREEN 3: LAB CAMERAS LIVE FLEET MULTI-VIEW
+# SCREEN 3: LAB CAMERAS LIVE FLEET MULTI-VIEW (AUTHENTICATED BACKEND LOOP)
 # ==========================================================
 elif st.session_state.current_page == "cameras":
     if st.button("⬅️ Back to Main Hub"):
@@ -364,34 +365,43 @@ elif st.session_state.current_page == "cameras":
     st.write("Real-time persistent feed tracking automation layout grids and colony spaces.")
     st.write("---")
 
-    # Set up a clean grid layout (2 columns wide)
-    cam_cols = st.columns(2)
+    run_streams = st.checkbox("Active Feed Stream", value=True)
 
-    # Loop through every camera defined in your global settings
+    # Automatically set up columns for your fleet
+    cam_cols = st.columns(2)
+    placeholders = {}
+
     for idx, (cam_name, cam_ip) in enumerate(CAM_FLEET_IPS.items()):
-        # This math alternates between column 0 and column 1
         with cam_cols[idx % 2]:
             st.subheader(cam_name)
-            
-            stream_url = f"https://{CAM_USER}:{CAM_PASS}@{cam_ip}/axis-cgi/mjpg/video.cgi"
-            
-            # Embed native HTML image container for each camera
-            stream_html = f"""
-            <html>
-                <body style="margin:0; padding:0; background-color:black; font-family:sans-serif;">
-                    <div style="position:relative; width:100%; height:320px;">
-                        <img src="{stream_url}" style="width:100%; height:100%; object-fit:contain; display:block;" 
-                             onerror="document.getElementById('err-{idx}').style.display='flex';">
-                        <div id="err-{idx}" style="position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(30,30,30,0.9); color:#ff4b4b; display:none; justify-content:center; align-items:center; flex-direction:column;">
-                            <span style="font-size:24px; margin-bottom:8px;">⚠️</span>
-                            <span>{cam_name} Offline</span>
-                            <small style="color:#aaa; margin-top:4px;">Check IP: {cam_ip}</small>
-                        </div>
-                    </div>
-                </body>
-            </html>
-            """
-            st.components.v1.html(stream_html, height=330)
+            placeholders[cam_name] = st.image([], use_container_width=True)
 
+    # Frame processing stream parser loop
+    while run_streams:
+        for cam_name, cam_ip in CAM_FLEET_IPS.items():
+            stream_url = f"https://{cam_ip}/axis-cgi/mjpg/video.cgi"
+            try:
+                # stream=True keeps the connection open over a persistent pipeline
+                with requests.get(stream_url, auth=HTTPDigestAuth(CAM_USER, CAM_PASS), stream=True, timeout=5, verify=False) as r:
+                    if r.status_code == 200:
+                        bytes_buffer = bytes()
+                        # Stream individual frame chunks sequentially
+                        for chunk in r.iter_content(chunk_size=1024):
+                            if not run_streams:
+                                break
+                            bytes_buffer += chunk
+                            a = bytes_buffer.find(b'\xff\xd8') # JPEG file header boundary tag
+                            b = bytes_buffer.find(b'\xff\xd9') # JPEG file termination footer tag
+                            if a != -1 and b != -1:
+                                jpg = bytes_buffer[a:b+2]
+                                bytes_buffer = bytes_buffer[b+2:]
+                                
+                                # Render frame instantly
+                                placeholders[cam_name].image(jpg)
+                    else:
+                        placeholders[cam_name].error(f"Authentication rejected by {cam_name}")
+            except Exception:
+                placeholders[cam_name].error(f"Cannot resolve network connection to {cam_ip}")
+                continue
 
 
