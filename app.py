@@ -65,7 +65,25 @@ if st.session_state.current_page == "home":
         if st.button("🎥 Lab Cameras", type="primary", use_container_width=True):
             st.session_state.current_page = "cameras"
             st.rerun()
-
+    # COLUMN 4: Automation Deck (Linked to Venus Portal)
+    with col4:
+        st.subheader("🔬 Automation Deck")
+        st.write("Direct integration matrix with the company's Hamilton Venus automation pipelines.")
+        
+        # 🎨 SWITCHED TO TYPE="PRIMARY" TO MATCH NAVY BLUE / WHITE WRITING THEME
+        st.link_button(
+            label="🌐 Open Venus Portal", 
+            url="https://venus.harbinger-health.net/", 
+            type="primary", 
+            use_container_width=True
+        )
+        
+        st.write("---")
+        # Live preview embed matrix
+        try:
+            st.components.v1.iframe(src="https://venus.harbinger-health.net/", height=350, scrolling=True)
+        except Exception as e:
+            st.caption("Unable to load embedded Venus frame view.")
 
 # ==========================================================
 # SCREEN: TUBE INSPECTION SCREEN (PERFECT ROW-BY-ROW UNIFORM GRID)
