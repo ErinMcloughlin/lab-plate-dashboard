@@ -9,6 +9,7 @@ import numpy as np
 from PIL import Image
 import pickle
 from io import BytesIO
+import urllib.parse
 
 st.set_page_config(page_title="Lab Portal", page_icon="🧪", layout="wide")
 # --- AXIS CAMERA GLOBAL SETTINGS ---
