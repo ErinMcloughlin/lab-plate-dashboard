@@ -68,7 +68,11 @@ if st.session_state.current_page == "home":
     with col3:
         st.subheader("📷 Visual Inspections")
         st.write("Trigger automated deck imagery, barcode scanning, or colony counts.")
-        
+                
+        if st.button("🎥 Lab Cameras", type="primary", use_container_width=True):
+            st.session_state.current_page = "cameras"
+            st.rerun()
+
         first_cam_name = list(CAM_FLEET_IPS.keys())[0]
         first_cam_ip = CAM_FLEET_IPS[first_cam_name]
         
@@ -87,9 +91,6 @@ if st.session_state.current_page == "home":
         st.components.v1.html(preview_html, height=140)
         # -------------------------------------------
 
-        if st.button("🎥 Lab Cameras", type="primary", use_container_width=True):
-            st.session_state.current_page = "cameras"
-            st.rerun()
 
     # COLUMN 4: Automation Deck (Linked to Venus Portal)
     with col4:
