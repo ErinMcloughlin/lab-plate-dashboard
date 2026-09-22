@@ -20,16 +20,15 @@ CAM_PASS = urllib.parse.quote_plus(RAW_PASS)
 # Add as many cameras as you want here by adding new rows with their unique IPs
 CAM_FLEET_IPS = {
     "Deck Cam A (Overhead)": "10.76.32.117",
-    "Deck Cam B (Side)": "10.76.32.118",      # <-- Replace with your second camera's real IP
-    "Incubator Colony Cam": "10.76.32.119",   # <-- Replace with your third camera's real IP
-    "Centrifuge Station": "10.76.32.120"     # <-- Replace with your fourth camera's real IP
+    "Deck Cam B (Side)": "10.76.32.118",      
+    "Incubator Colony Cam": "10.76.32.119",   
+    "Centrifuge Station": "10.76.32.120"     
 }
-
 
 # 1. INITIALIZE SESSION STATE ROUTING (Tracks which screen we are viewing)
 if "current_page" not in st.session_state:
     st.session_state.current_page = "home"
-
+    
 # ==========================================================
 # SCREEN 1: THE WELCOME SCREEN / MAIN HUB (4 Columns)
 # ==========================================================
@@ -67,10 +66,11 @@ if st.session_state.current_page == "home":
         
         PREVIEW_CAM_URL = f"https://{CAM_USER}:{CAM_PASS}@{first_cam_ip}/axis-cgi/mjpg/video.cgi" 
         
+        # FIX: Repaired the placeholder fallback path string structure
         preview_html = f"""
         <html>
             <body style="margin:0; padding:0; background-color:#1E1E1E; border-radius:8px; overflow:hidden;">
-                <img src="{PREVIEW_CAM_URL}" style="width:100%; height:140px; object-fit:cover; display:block;" onerror="this.onerror=null; this.src='https://placehold.co{first_cam_name}+Offline';">
+                <img src="{PREVIEW_CAM_URL}" style="width:100%; height:140px; object-fit:cover; display:block;" onerror="this.onerror=null; this.src='https://placehold.co';">
             </body>
         </html>
         """
@@ -79,7 +79,7 @@ if st.session_state.current_page == "home":
         if st.button("🎥 Lab Cameras", type="primary", use_container_width=True):
             st.session_state.current_page = "cameras"
             st.rerun()
-
+            
     # COLUMN 4: Automation Deck (Linked to Venus Portal)
     with col4:
         st.subheader("🔬 Automation Deck")
