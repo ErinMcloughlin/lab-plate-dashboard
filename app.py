@@ -10,11 +10,15 @@ from PIL import Image
 import pickle
 import requests  # <--- NEW
 from requests.auth import HTTPDigestAuth  # <--- NEW: Forces secure password handshake
+import urllib3  # <--- NEW
 
 st.set_page_config(page_title="Lab Portal", page_icon="🧪", layout="wide")
 # --- AXIS CAMERA GLOBAL SETTINGS ---
+# Crucial: Force python to ignore internal self-signed network certificate warnings globally
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)  # <--- NEW
+
 CAM_USER = "root"
-CAM_PASS = "FL67Rules20$"  # <--- Keep the literal password here. The python backend will parse it safely!
+CAM_PASS = "FL67Rules20$"  # Literal string password
 
 CAM_FLEET_IPS = {
     "Deck Cam A (Overhead)": "10.76.32.117",
@@ -58,41 +62,30 @@ if st.session_state.current_page == "home":
         st.subheader("📷 Visual Inspections")
         st.write("Trigger automated deck imagery, barcode scanning, or colony counts.")
         
-        # Grab the first camera from your fleet list automatically
         first_cam_name = list(CAM_FLEET_IPS.keys())[0]
         first_cam_ip = CAM_FLEET_IPS[first_cam_name]
         
         preview_placeholder = st.image([], use_container_width=True)
         
-        # 🛠️ THE SECURE FALLBACK TRIAGE ROUTINE
-        # We try HTTPS first. If local corporate firewalls block it, we fall back to HTTP.
-        urls_to_test = [
-            f"https://{first_cam_ip}/axis-cgi/jpg/image.cgi?resolution=640x480",
-            f"http://{first_cam_ip}/axis-cgi/jpg/image.cgi?resolution=640x480"
-        ]
+        # 🛠️ FORCED UNENCRYPTED LOCAL PORT 80 SNIPPET
+        # This completely side-steps corporate security certificate errors
+        unsecured_snapshot_url = f"http://{first_cam_ip}:80/axis-cgi/jpg/image.cgi?resolution=640x480"
         
-        success = False
-        for url in urls_to_test:
-            try:
-                response = requests.get(
-                    url, 
-                    auth=HTTPDigestAuth(CAM_USER, CAM_PASS), 
-                    timeout=2, 
-                    verify=False  # Strips away self-signed corporate certificate blocks
-                )
-                if response.status_code == 200:
-                    preview_placeholder.image(response.content)
-                    success = True
-                    break  # Found a working path, exit loop
-                elif response.status_code == 401:
-                    preview_placeholder.error("🔒 Camera Auth Rejected: Bad User/Pass")
-                    success = True
-                    break
-            except Exception:
-                continue  # Skip port failures silently and check the next url
-                
-        if not success:
-            preview_placeholder.warning(f"⚠️ Could not reach {first_cam_ip} via HTTP or HTTPS")
+        try:
+            response = requests.get(
+                unsecured_snapshot_url, 
+                auth=HTTPDigestAuth(CAM_USER, CAM_PASS), 
+                timeout=3, 
+                verify=False
+            )
+            if response.status_code == 200:
+                preview_placeholder.image(response.content)
+            elif response.status_code == 401:
+                preview_placeholder.error("🔒 Camera Auth Rejected: Bad User/Pass")
+            else:
+                preview_placeholder.warning(f"⚠️ Camera returned code: {response.status_code}")
+        except Exception as e:
+            preview_placeholder.warning(f"⚠️ Unreachable on network port 80")
 
         if st.button("🎥 Lab Cameras", type="primary", use_container_width=True):
             st.session_state.current_page = "cameras"
@@ -371,7 +364,7 @@ elif st.session_state.current_page == "uploader":
         st.info("Please fill out metadata in the sidebar and upload a file to run calculations.")
 
 # ==========================================================
-# SCREEN 3: LAB CAMERAS LIVE FLEET MULTI-VIEW (AUTHENTICATED BACKEND LOOP)
+# SCREEN 3: LAB CAMERAS LIVE FLEET MULTI-VIEW (PORT 80 HANDSHAKE)
 # ==========================================================
 elif st.session_state.current_page == "cameras":
     if st.button("⬅️ Back to Main Hub"):
@@ -384,7 +377,6 @@ elif st.session_state.current_page == "cameras":
 
     run_streams = st.checkbox("Active Feed Stream", value=True)
 
-    # Automatically set up columns for your fleet
     cam_cols = st.columns(2)
     placeholders = {}
 
@@ -393,30 +385,29 @@ elif st.session_state.current_page == "cameras":
             st.subheader(cam_name)
             placeholders[cam_name] = st.image([], use_container_width=True)
 
-    # Frame processing stream parser loop
+    # Frame processing stream parser loop over Port 80 HTTP
     while run_streams:
         for cam_name, cam_ip in CAM_FLEET_IPS.items():
-            stream_url = f"https://{cam_ip}/axis-cgi/mjpg/video.cgi"
+            # Routes video frame bytes through standard HTTP channels to ignore SSL breaks
+            stream_url = f"http://{cam_ip}:80/axis-cgi/mjpg/video.cgi"
             try:
-                # stream=True keeps the connection open over a persistent pipeline
                 with requests.get(stream_url, auth=HTTPDigestAuth(CAM_USER, CAM_PASS), stream=True, timeout=5, verify=False) as r:
                     if r.status_code == 200:
                         bytes_buffer = bytes()
-                        # Stream individual frame chunks sequentially
                         for chunk in r.iter_content(chunk_size=1024):
                             if not run_streams:
                                 break
                             bytes_buffer += chunk
-                            a = bytes_buffer.find(b'\xff\xd8') # JPEG file header boundary tag
-                            b = bytes_buffer.find(b'\xff\xd9') # JPEG file termination footer tag
+                            a = bytes_buffer.find(b'\xff\xd8') 
+                            b = bytes_buffer.find(b'\xff\xd9') 
                             if a != -1 and b != -1:
                                 jpg = bytes_buffer[a:b+2]
                                 bytes_buffer = bytes_buffer[b+2:]
-                                
-                                # Render frame instantly
                                 placeholders[cam_name].image(jpg)
+                    elif r.status_code == 401:
+                        placeholders[cam_name].error(f"❌ Auth rejected by {cam_name}")
                     else:
-                        placeholders[cam_name].error(f"Authentication rejected by {cam_name}")
+                        placeholders[cam_name].error(f"⚠️ Error {r.status_code}")
             except Exception:
                 placeholders[cam_name].error(f"Cannot resolve network connection to {cam_ip}")
                 continue
