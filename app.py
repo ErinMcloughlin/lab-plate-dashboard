@@ -11,6 +11,9 @@ import pickle
 from io import BytesIO
 
 st.set_page_config(page_title="Lab Portal", page_icon="🧪", layout="wide")
+# --- AXIS CAMERA GLOBAL SETTINGS ---
+CAM_USER = "root"
+CAM_PASS = "FL67Rules20$"  
 
 # 1. INITIALIZE SESSION STATE ROUTING (Tracks which screen we are viewing)
 if "current_page" not in st.session_state:
@@ -47,9 +50,8 @@ if st.session_state.current_page == "home":
         st.subheader("📷 Visual Inspections")
         st.write("Trigger automated deck imagery, barcode scanning, or colony counts.")
         
-        # --- NEW LIVE CAMERA PREVIEW FEED ---
-        # Change this URL to your actual Axis camera IP / Endpoint
-        PREVIEW_CAM_URL = "http://192.168.1" 
+        # Automatically builds: http://192.168.1
+        PREVIEW_CAM_URL = f"http://{CAM_USER}:{CAM_PASS}@192.168.1.50/axis-cgi/mjpg/video.cgi" 
         
         preview_html = f"""
         <html>
@@ -59,29 +61,11 @@ if st.session_state.current_page == "home":
         </html>
         """
         st.components.v1.html(preview_html, height=140)
-        # ------------------------------------
 
         if st.button("🎥 Lab Cameras", type="primary", use_container_width=True):
             st.session_state.current_page = "cameras"
             st.rerun()
-            
-    # COLUMN 4: Automation Deck (Linked to Venus Portal)
-    with col4:
-        st.subheader("🔬 Automation Deck")
-        st.write("Direct integration matrix with the company's Hamilton Venus automation pipelines.")
-        
-        st.link_button(
-            label="🌐 Open Venus Portal", 
-            url="https://venus.harbinger-health.net/", 
-            type="primary", 
-            use_container_width=True
-        )
-        
-        st.write("---")
-        try:
-            st.components.v1.iframe(src="https://venus.harbinger-health.net/", height=350, scrolling=True)
-        except Exception as e:
-            st.caption("Unable to load embedded Venus frame view.")
+
 
 # ==========================================================
 # SCREEN: TUBE INSPECTION SCREEN (PERFECT ROW-BY-ROW UNIFORM GRID)
@@ -337,7 +321,7 @@ elif st.session_state.current_page == "uploader":
 
 
 # ==========================================================
-# SCREEN 3: LAB CAMERAS LIVE FLEET MULTI-VIEW
+# SCREEN 3: LAB CAMERAS LIVE FLEET MULTI-VIEW (AUTO-LOOP)
 # ==========================================================
 elif st.session_state.current_page == "cameras":
     if st.button("⬅️ Back to Main Hub"):
@@ -348,36 +332,47 @@ elif st.session_state.current_page == "cameras":
     st.write("Real-time persistent feed tracking automation layout grids and colony spaces.")
     st.write("---")
 
-    # TODO: Replace these placeholder IPs with your real local or public Axis IPs
-    # Default Axis path for MJPEG is /axis-cgi/mjpg/video.cgi
+    # This dynamically injects your CAM_USER and CAM_PASS variables into each string automatically
     camera_fleet = {
-        "easyBlood1": "http://10.76.32.117",
-        "Presto2": "http://10.76.32.114",
-        "Presto1": "http://10.76.32.112",
-        "easyBlood4": "http://10.76.32.115"
+        "easyBlood1": f"rtsp://{CAM_USER}:{CAM_PASS}@10.76.32.117/axis-media/media.amp",
+        "Presto2": f"rtsp://{CAM_USER}:{CAM_PASS}@10.76.32.114/axis-media/media.amp",
     }
 
-    # Split cameras into a clean 2x2 multi-view grid layout
-    cam_cols = st.columns(2)
+    # Add an explicit stop control checkbox so users can freeze the processing loop
+    run_streams = st.checkbox("Active Feed Stream", value=True)
 
-    for idx, (cam_name, stream_url) in enumerate(camera_fleet.items()):
-        # Alternate columns (0 and 1)
-        with cam_cols[idx % 2]:
+    # Create fixed layout window rows
+    cam_cols = st.columns(len(camera_fleet))
+    placeholders = {}
+    caps = {}
+
+    # Initialize a clean canvas placeholder box for each camera slot
+    for idx, (cam_name, rtsp_url) in enumerate(camera_fleet.items()):
+        with cam_cols[idx]:
             st.subheader(cam_name)
+            placeholders[cam_name] = st.image([], use_container_width=True)
             
-            # Embed native HTML image container that continuously pulls stream bytes from the Axis device
-            stream_html = f"""
-            <html>
-                <body style="margin:0; padding:0; background-color:black; font-family:sans-serif;">
-                    <div style="position:relative; width:100%; height:320px;">
-                        <img src="{stream_url}" style="width:100%; height:100%; object-fit:contain; display:block;" 
-                             onerror="document.getElementById('err-{idx}').style.display='flex';">
-                        <div id="err-{idx}" style="position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(30,30,30,0.9); color:#ff4b4b; display:none; justify-content:center; align-items:center; flex-direction:column;">
-                            <span style="font-size:24px; margin-bottom:8px;">⚠️</span>
-                            <span>Feed Offline or Local Network Blocked</span>
-                        </div>
-                    </div>
-                </body>
-            </html>
-            """
-            st.components.v1.html(stream_html, height=330)
+            # Start backend background worker stream connection via OpenCV
+            cap = cv2.VideoCapture(rtsp_url)
+            if cap.isOpened():
+                caps[cam_name] = cap
+            else:
+                st.error(f"Could not connect to network socket for {cam_name}")
+
+    # Infinite rendering cycle loop (Keeps updating image states asynchronously)
+    while run_streams and len(caps) > 0:
+        for cam_name, cap in caps.items():
+            ret, frame = cap.read()
+            if ret:
+                # Convert color spectrum values from BGR (OpenCV) to RGB (Streamlit UI layout requirements)
+                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                
+                # Instantly overwrite the specific video widget block 
+                placeholders[cam_name].image(rgb_frame, channels="RGB")
+            else:
+                # Re-attempt link initialization if connection drops momentarily
+                cap.open(camera_fleet[cam_name])
+
+    # Clean release hook if the loop is broken or page state redirects
+    for cap in caps.values():
+        cap.release()
