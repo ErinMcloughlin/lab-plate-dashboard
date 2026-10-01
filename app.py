@@ -83,13 +83,32 @@ def open_photo(source, max_side: int = MAX_SIDE) -> tuple[Image.Image, datetime 
 
 
 def photo_taken_at(img: Image.Image) -> datetime | None:
-    """The camera's capture time from EXIF data, or None if the photo doesn't have one."""
+    """When the photo was taken, from data saved inside the photo (EXIF or PNG text), if any."""
     try:
         exif = img.getexif()
         raw = exif.get_ifd(_EXIF_IFD).get(_EXIF_DATETIME_ORIGINAL) or exif.get(_EXIF_DATETIME)
-        return datetime.strptime(str(raw).strip(), "%Y:%m:%d %H:%M:%S")
+        if raw:
+            return datetime.strptime(str(raw).strip(), "%Y:%m:%d %H:%M:%S")
     except (AttributeError, TypeError, ValueError):
-        return None
+        pass
+    raw = (getattr(img, "info", None) or {}).get("Creation Time")
+    if raw:
+        for fmt in ("%Y:%m:%d %H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+            try:
+                return datetime.strptime(str(raw).strip()[:19], fmt)
+            except ValueError:
+                continue
+    return None
+
+
+def date_from_name(name: str) -> datetime | None:
+    """A date written in a file name like 2026-09-30 or 20260930, if there is one."""
+    for match in re.finditer(r"(20\d{2})[-_.]?(\d{2})[-_.]?(\d{2})", name):
+        try:
+            return datetime(int(match[1]), int(match[2]), int(match[3]))
+        except ValueError:
+            continue
+    return None
 
 
 def rgb_to_lab(rgb):
@@ -214,8 +233,9 @@ DEFAULT_SETTINGS = {
 }
 RESULT_COLUMNS = [
     "file_name", "sample", "photo_time", "time_source", "stored_copy", "score", "mean_L",
-    "mean_a", "mean_b", "plasma_pixels", "plasma_fraction", "analyzed_at",
+    "mean_a", "mean_b", "plasma_pixels", "plasma_fraction", "analyzed_at", "manual_grade",
 ]  # fmt: skip
+CALL_OPTIONS = ["Gross", "Moderate", "Slight", "None"]  # grades a person can assign
 
 
 # ---------- storage ----------
@@ -238,15 +258,44 @@ def save_settings(settings: dict) -> None:
 def load_results() -> pd.DataFrame:
     if not RESULTS_FILE.exists():
         return pd.DataFrame(columns=RESULT_COLUMNS)
-    df = pd.read_csv(RESULTS_FILE, dtype={"file_name": str, "sample": str})
-    if not set(RESULT_COLUMNS) <= set(df.columns):  # left over from an older version
+    # keep_default_na=False so a manual call of "None" isn't read back as a blank.
+    df = pd.read_csv(
+        RESULTS_FILE,
+        dtype={"file_name": str, "sample": str, "manual_grade": str},
+        keep_default_na=False,
+        na_values=[""],
+    )
+    if "file_name" not in df.columns or "score" not in df.columns:  # not a results file
         return pd.DataFrame(columns=RESULT_COLUMNS)
+    for col in RESULT_COLUMNS:  # columns added in later versions
+        if col not in df.columns:
+            df[col] = np.nan
+    df["manual_grade"] = df["manual_grade"].astype(object)
     df["photo_time"] = pd.to_datetime(df["photo_time"])
     return df
 
 
 def save_results(df: pd.DataFrame) -> None:
     df[RESULT_COLUMNS].to_csv(RESULTS_FILE, index=False)
+
+
+def set_call(file_name: str, widget_key: str) -> None:
+    """Save (or clear) a person's grade for one sample. Used as a widget callback."""
+    value = st.session_state.get(widget_key)
+    df = load_results()
+    df.loc[df["file_name"] == file_name, "manual_grade"] = (
+        value if value in CALL_OPTIONS else np.nan
+    )
+    save_results(df)
+
+
+def remove_sample(file_name: str) -> None:
+    """Delete one sample's result and its saved photo copy."""
+    df = load_results()
+    gone = df[df["file_name"] == file_name]
+    for copy_name in gone["stored_copy"].dropna():
+        (PHOTO_DIR / str(copy_name)).unlink(missing_ok=True)
+    save_results(df[df["file_name"] != file_name])
 
 
 def stored_name(file_name: str) -> str:
@@ -263,9 +312,13 @@ def _read_zip_entry(archive: zipfile.ZipFile, entry: str):
     return io.BytesIO(archive.read(entry))
 
 
-def collect_photos(uploads) -> list[tuple[str, object]]:
-    """Turn uploaded photos and zip files into (file name, opener) pairs, one per photo."""
-    items: dict[str, object] = {}
+def collect_photos(uploads) -> list[tuple[str, object, datetime | None]]:
+    """Turn uploads into (file name, opener, file date) for each photo.
+
+    Zip files keep each photo's date (when it was saved); loose uploads don't have one,
+    because browsers don't send file dates.
+    """
+    items: dict[str, tuple] = {}
     for upload in uploads or []:
         if upload.name.lower().endswith(".zip"):
             try:
@@ -273,21 +326,29 @@ def collect_photos(uploads) -> list[tuple[str, object]]:
             except zipfile.BadZipFile:
                 st.error(f"{upload.name} isn't a valid zip file, so it was skipped.")
                 continue
-            for entry in archive.namelist():
+            for info in archive.infolist():
+                entry = info.filename
                 name = entry.replace("\\", "/").rsplit("/", 1)[-1]
                 is_photo = Path(name).suffix.lower().lstrip(".") in IMAGE_TYPES
                 if is_photo and not entry.startswith("__MACOSX") and not name.startswith("."):
-                    items.setdefault(name, partial(_read_zip_entry, archive, entry))
+                    try:
+                        file_date = datetime(*info.date_time)
+                    except ValueError:
+                        file_date = None
+                    items.setdefault(
+                        name, (name, partial(_read_zip_entry, archive, entry), file_date)
+                    )
         else:
-            items.setdefault(upload.name, partial(_read_upload, upload))
-    return list(items.items())
+            items.setdefault(upload.name, (upload.name, partial(_read_upload, upload), None))
+    return list(items.values())
 
 
 def analyze_uploads(items, settings: dict, results: pd.DataFrame) -> pd.DataFrame:
     """Analyze photos, save small copies, and return results with the new rows added."""
     rows, failed = [], []
     bar = st.progress(0.0, text=f"Analyzing 0 of {len(items)}")
-    for i, (name, opener) in enumerate(items, start=1):
+    previous_calls = results.set_index("file_name")["manual_grade"].to_dict()
+    for i, (name, opener, file_date) in enumerate(items, start=1):
         try:
             img, taken = open_photo(opener())
         except Exception:  # not a readable image
@@ -295,12 +356,23 @@ def analyze_uploads(items, settings: dict, results: pd.DataFrame) -> pd.DataFram
             continue
         copy_name = stored_name(name)
         img.save(PHOTO_DIR / copy_name, quality=90)
+        # Photo date, best source first.
+        named = date_from_name(name)
+        if taken:
+            when, source = taken, "photo data"
+        elif file_date:
+            when, source = file_date, "file date"
+        elif named:
+            when, source = named, "file name"
+        else:
+            when, source = datetime.now(), "upload time"
         rows.append(
             {
                 "file_name": name,
                 "sample": Path(name).stem,
-                "photo_time": taken or datetime.now(),
-                "time_source": "camera" if taken else "upload",
+                "photo_time": when,
+                "time_source": source,
+                "manual_grade": previous_calls.get(name, np.nan),
                 "stored_copy": copy_name,
                 "analyzed_at": datetime.now().isoformat(timespec="seconds"),
                 **measure(img, settings),
@@ -428,7 +500,10 @@ def render_hemolysis_dashboard() -> None:
 
     # Grades come from the saved score, so threshold changes apply instantly.
     if not results.empty:
-        results["grade"] = results["score"].apply(lambda x: grade(x, s["thresholds"]))
+        results["auto_grade"] = results["score"].apply(lambda x: grade(x, s["thresholds"]))
+        manual = results["manual_grade"].where(results["manual_grade"].isin(CALL_OPTIONS))
+        results["grade"] = manual.fillna(results["auto_grade"])
+        results["call"] = np.where(manual.notna(), "manual", "auto")
         results["date"] = results["photo_time"].dt.date
 
     tab_dash, tab_view, tab_setup = st.tabs(["📊 Dashboard", "🔍 Sample viewer", "⚙️ Setup"])
@@ -451,7 +526,7 @@ def render_hemolysis_dashboard() -> None:
 
             total = len(view)
             n_hemo = int(view["grade"].isin(HEMOLYZED_GRADES).sum())
-            n_check = int((view["grade"] == "Check image").sum())
+            n_check = int((view["grade"] == "Check image").sum())  # still waiting for a call
             m1, m2, m3, m4 = st.columns(4)
             m1.metric("Samples", total)
             m2.metric("Hemolyzed (slight or worse)", n_hemo)
@@ -468,14 +543,15 @@ def render_hemolysis_dashboard() -> None:
                 st.subheader("Samples")
                 table = (
                     view.sort_values("photo_time", ascending=False)[
-                        ["sample", "photo_time", "time_source", "grade", "score"]
+                        ["sample", "photo_time", "time_source", "grade", "call", "score"]
                     ]
                     .rename(
                         columns={
                             "sample": "Sample",
-                            "photo_time": "Photo time",
-                            "time_source": "Time from",
+                            "photo_time": "Photo date",
+                            "time_source": "Date from",
                             "grade": "Grade",
+                            "call": "Graded by",
                             "score": "Redness score",
                         }
                     )
@@ -483,8 +559,9 @@ def render_hemolysis_dashboard() -> None:
                 )
                 st.dataframe(table, width="stretch", hide_index=True)
                 st.caption(
-                    "Photo time comes from the camera when the photo has that information; "
-                    "otherwise it's when the photo was uploaded."
+                    "Photo date comes from data saved in the photo if it has any, otherwise "
+                    "the photo file's date (kept when you upload a zip), a date in the file "
+                    "name, or the upload time. 'Graded by: manual' means a person made the call."
                 )
                 st.download_button(
                     "📥 Download these results (CSV)",
@@ -532,12 +609,28 @@ def render_hemolysis_dashboard() -> None:
                                     st.image(thumb)
                                 score = "-" if pd.isna(r["score"]) else f"{r['score']:.0f}"
                                 st.caption(f"{r['sample']}  \nscore {score}")
+                                if g == "Check image":
+                                    key = f"quick_call_{r['file_name']}"
+                                    st.selectbox(
+                                        "Call",
+                                        ["", *CALL_OPTIONS],
+                                        format_func=lambda x: "Make a call" if x == "" else x,
+                                        key=key,
+                                        on_change=set_call,
+                                        args=(r["file_name"], key),
+                                        label_visibility="collapsed",
+                                    )
                     if len(group) > THUMBS_PER_GROUP:
                         st.caption(
                             f"Showing the {THUMBS_PER_GROUP} highest-scoring of {len(group)}. "
                             "Narrow the date range or search on the Dashboard tab to see others."
                         )
 
+                if "Check image" in shown_grades and counts.get("Check image", 0):
+                    st.caption(
+                        "Check image: the app couldn't find plasma in these photos. Look at each "
+                        "one and pick a grade under it; it then moves to that group."
+                    )
                 st.divider()
                 st.markdown("#### Look at one sample")
                 detail_pool = pool[pool["grade"].isin(shown_grades)].sort_values(
@@ -580,6 +673,41 @@ def render_hemolysis_dashboard() -> None:
                         st.write(
                             f"Lab color: L {row['mean_L']}, a {row['mean_a']}, b {row['mean_b']}"
                         )
+                        st.write(
+                            f"Photo date: {row['photo_time']:%Y-%m-%d %H:%M} "
+                            f"(from {row['time_source']})"
+                        )
+
+                        st.markdown("**Your call**")
+                        current = row["manual_grade"] if row["call"] == "manual" else ""
+                        key = f"detail_call_{row['file_name']}"
+                        st.selectbox(
+                            "Grade for this sample",
+                            ["", *CALL_OPTIONS],
+                            index=(["", *CALL_OPTIONS]).index(current),
+                            format_func=lambda x: (
+                                f"Use the app's grade ({row['auto_grade']})" if x == "" else x
+                            ),
+                            key=key,
+                            on_change=set_call,
+                            args=(row["file_name"], key),
+                            help="Overrides the app's grade for this sample only.",
+                        )
+
+                        with st.expander("🗑️ Remove this sample from the data set"):
+                            st.write(
+                                "Deletes this sample's result and saved photo copy. If you "
+                                "upload the photo again later, it will be analyzed as new."
+                            )
+                            sure = st.checkbox(
+                                f"Yes, remove {row['sample']}", key=f"rm_ok_{row['file_name']}"
+                            )
+                            if st.button(
+                                "Remove sample", disabled=not sure, key=f"rm_{row['file_name']}"
+                            ):
+                                remove_sample(row["file_name"])
+                                st.session_state.hemo_flash = f"Removed {row['sample']}."
+                                st.rerun()
 
     # ---------- setup / calibration ----------
 
@@ -732,12 +860,12 @@ if st.session_state.current_page == "home":
         preview_html = f"""
         <html>
             <body style="margin:0; padding:0; background-color:#1E1E1E; border-radius:8px; overflow:hidden;">
-                <img src="{PREVIEW_CAM_URL}" style="width:100%; height:140px; object-fit:cover; display:block;" 
-                     onerror="this.onerror=null; this.parentNode.innerHTML='<div style=\"color:#ff4b4b; text-align:center; padding-top:50px; font-family:sans-serif;\">⚠️ Camera Connection Locked</div>';">
+                <img src="{PREVIEW_CAM_URL}" style="width:100%; height:230px; object-fit:contain; display:block; background-color:#000;" 
+                     onerror="this.onerror=null; this.parentNode.innerHTML='<div style=\"color:#ff4b4b; text-align:center; padding-top:95px; font-family:sans-serif;\">⚠️ Camera Connection Locked</div>';">
             </body>
         </html>
         """
-        st.components.v1.html(preview_html, height=140)
+        st.components.v1.html(preview_html, height=235)  # tall enough for the whole frame
         # -------------------------------------------
 
 
