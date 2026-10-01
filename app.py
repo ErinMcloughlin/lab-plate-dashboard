@@ -70,7 +70,19 @@ if st.session_state.current_page == "home":
     st.title("🧪 Laboratory Command Center")
     st.write("Welcome to the Harbinger Health portal. Select a task to begin working.")
     st.write("---")
-    
+        with st.expander("🔧 Camera diagnostics", expanded=True):
+        test_ip = list(CAM_FLEET_IPS.values())[0]
+        try:
+            r = get_cam_session().get(
+                f"https://{test_ip}/axis-cgi/jpg/image.cgi", timeout=5
+            )
+            st.write("Status code:", r.status_code)
+            st.write("Content-Type:", r.headers.get("Content-Type"))
+            st.write("Auth challenge:", r.headers.get("WWW-Authenticate"))
+            if "image" not in r.headers.get("Content-Type", ""):
+                st.code(r.text[:500])
+        except Exception as e:
+            st.error(f"{type(e).__name__}: {e}")
     col1, col2, col3, col4 = st.columns(4)
     
     # COLUMN 1: Plate Processing Tool
