@@ -204,8 +204,9 @@ RESULTS_FILE = DATA_DIR / "results.csv"
 
 DEFAULT_SETTINGS = {
     # Tube region as fractions of the photo: left, top, right, bottom (0 = one edge, 1 = the other).
-    "roi": [0.35, 0.15, 0.65, 0.55],
-    "min_lightness": 40.0,
+    # Set from an easyBlood tube photo: plasma layer of the front tube, right of the metal bracket.
+    "roi": [0.48, 0.53, 0.85, 0.74],
+    "min_lightness": 25.0,
     "max_lightness": 97.0,
     "min_chroma": 12.0,
     # Redness score cutoffs. PLACEHOLDERS: calibrate against samples with known hemolysis.
@@ -330,6 +331,41 @@ def reanalyze_saved(settings: dict, results: pd.DataFrame) -> pd.DataFrame:
         bar.progress(n / len(out), text=f"Re-analyzing {n} of {len(out)}")
     bar.empty()
     return out
+
+
+GRADE_ORDER = ["Gross", "Moderate", "Slight", "None", "Check image"]
+GRADE_ICONS = {"Gross": "🔴", "Moderate": "🟠", "Slight": "🟡", "None": "🟢", "Check image": "⚪"}
+THUMBS_PER_ROW = 10  # small tube pictures per row in the Sample viewer
+THUMBS_PER_GROUP = 50  # most pictures shown per grade group
+THUMB_HEIGHT = 150  # pixels
+DETAIL_WIDTH = 200  # pixels, single-sample view
+PREVIEW_WIDTH = 170  # pixels, Setup preview
+
+
+def _crop_near_roi(img: Image.Image, roi, above: float = 0.12, below: float = 0.12) -> Image.Image:
+    """The part of the photo around the tube region, so the plasma fills the picture."""
+    left, top, right, bottom = roi
+    w, h = img.size
+    x0, x1 = max(0.0, left - 0.08), min(1.0, right + 0.08)
+    y0, y1 = max(0.0, top - above), min(1.0, bottom + below)
+    return img.crop((int(x0 * w), int(y0 * h), max(int(x1 * w), 1), max(int(y1 * h), 1)))
+
+
+@st.cache_data(show_spinner=False, max_entries=3000)
+def _thumbnail_cached(path: str, mtime: float, roi: tuple) -> Image.Image:
+    img, _ = open_photo(path)
+    thumb = _crop_near_roi(img, roi, above=0.04, below=0.04)
+    scale = THUMB_HEIGHT / thumb.height
+    return thumb.resize((max(1, int(thumb.width * scale)), THUMB_HEIGHT))
+
+
+def _thumbnail(path: Path, roi) -> Image.Image | None:
+    """Small picture of a tube's plasma area for the grouped view."""
+    try:
+        return _thumbnail_cached(str(path), path.stat().st_mtime, tuple(roi))
+    except OSError:
+        return None
+
 
 
 # ---------- page ----------
@@ -459,42 +495,91 @@ def render_hemolysis_dashboard() -> None:
             else:
                 st.info("No samples match this date range or search.")
 
-    # ---------- sample viewer ----------
+    # ---------- sample viewer: samples grouped by grade ----------
 
     with tab_view:
         if results.empty:
             st.info("Add some photos first.")
         else:
-            recent = results.sort_values("photo_time", ascending=False)
-            choice = st.selectbox(
-                "Sample",
-                recent.index,
-                format_func=lambda i: (
-                    f"{recent.at[i, 'sample']}  ({recent.at[i, 'grade']}, "
-                    f"{recent.at[i, 'photo_time']:%Y-%m-%d %H:%M})"
-                ),
+            pool = view  # same date range and search as the Dashboard tab
+            counts = pool["grade"].value_counts()
+            options = [g for g in GRADE_ORDER if counts.get(g, 0)]
+            st.caption(
+                "Samples grouped by hemolysis grade, using the date range and search from the "
+                "Dashboard tab. Each group is sorted from highest to lowest redness score."
             )
-            row = recent.loc[choice]
-            left, right = st.columns([3, 2])
-            with right:
-                st.metric("Grade", row["grade"])
-                st.metric("Redness score", "-" if pd.isna(row["score"]) else f"{row['score']:.1f}")
-                pixels = int(row["plasma_pixels"]) if pd.notna(row["plasma_pixels"]) else 0
-                st.write(f"Plasma pixels found: {pixels}")
-                st.write(f"Lab color: L {row['mean_L']}, a {row['mean_a']}, b {row['mean_b']}")
-            with left:
-                path = PHOTO_DIR / str(row["stored_copy"])
-                if path.exists():
-                    img, _ = open_photo(path)
-                    st.image(
-                        overlay(img, s),
-                        width="stretch",
-                        caption="Blue box: tube region. Blue tint: pixels counted as plasma.",
-                    )
+            if not options:
+                st.info("No samples match the Dashboard's date range or search.")
+            else:
+                default = [g for g in options if g in HEMOLYZED_GRADES] or options[:1]
+                shown_grades = st.multiselect(
+                    "Grades to show",
+                    options,
+                    default=default,
+                    format_func=lambda g: f"{GRADE_ICONS[g]} {g} ({counts[g]})",
+                )
+                for g in [g for g in GRADE_ORDER if g in shown_grades]:
+                    group = pool[pool["grade"] == g].sort_values("score", ascending=False)
+                    st.markdown(f"#### {GRADE_ICONS[g]} {g}: {len(group)} sample(s)")
+                    shown = group.head(THUMBS_PER_GROUP)
+                    for first in range(0, len(shown), THUMBS_PER_ROW):
+                        cols = st.columns(THUMBS_PER_ROW)
+                        chunk = shown.iloc[first : first + THUMBS_PER_ROW]
+                        for col, (_, r) in zip(cols, chunk.iterrows(), strict=False):
+                            with col:
+                                thumb = _thumbnail(PHOTO_DIR / str(r["stored_copy"]), s["roi"])
+                                if thumb is not None:
+                                    st.image(thumb)
+                                score = "-" if pd.isna(r["score"]) else f"{r['score']:.0f}"
+                                st.caption(f"{r['sample']}  \nscore {score}")
+                    if len(group) > THUMBS_PER_GROUP:
+                        st.caption(
+                            f"Showing the {THUMBS_PER_GROUP} highest-scoring of {len(group)}. "
+                            "Narrow the date range or search on the Dashboard tab to see others."
+                        )
+
+                st.divider()
+                st.markdown("#### Look at one sample")
+                detail_pool = pool[pool["grade"].isin(shown_grades)].sort_values(
+                    "score", ascending=False
+                )
+                if detail_pool.empty:
+                    st.info("Pick at least one grade above.")
                 else:
-                    st.warning(
-                        "The saved copy of this photo is missing. Upload it again to view it."
+                    choice = st.selectbox(
+                        "Sample",
+                        detail_pool.index,
+                        format_func=lambda i: (
+                            f"{detail_pool.at[i, 'sample']}  ({detail_pool.at[i, 'grade']}, "
+                            f"score {detail_pool.at[i, 'score']:.1f}, "
+                            f"{detail_pool.at[i, 'photo_time']:%Y-%m-%d %H:%M})"
+                        ),
                     )
+                    row = detail_pool.loc[choice]
+                    left, right = st.columns([1, 3])
+                    with left:
+                        path = PHOTO_DIR / str(row["stored_copy"])
+                        if path.exists():
+                            img, _ = open_photo(path)
+                            whole = st.toggle("Show whole photo")
+                            marked = overlay(img, s)
+                            st.image(
+                                marked if whole else _crop_near_roi(marked, s["roi"]),
+                                width=DETAIL_WIDTH,
+                                caption="Blue box: tube region. Blue tint: plasma pixels.",
+                            )
+                        else:
+                            st.warning("The saved copy of this photo is missing.")
+                    with right:
+                        st.metric("Grade", row["grade"])
+                        st.metric(
+                            "Redness score", "-" if pd.isna(row["score"]) else f"{row['score']:.1f}"
+                        )
+                        pixels = int(row["plasma_pixels"]) if pd.notna(row["plasma_pixels"]) else 0
+                        st.write(f"Plasma pixels found: {pixels}")
+                        st.write(
+                            f"Lab color: L {row['mean_L']}, a {row['mean_a']}, b {row['mean_b']}"
+                        )
 
     # ---------- setup / calibration ----------
 
@@ -568,7 +653,7 @@ def render_hemolysis_dashboard() -> None:
 
         with left:
             if preview_img is not None:
-                st.image(overlay(preview_img, s), width="stretch", caption="Preview")
+                st.image(overlay(preview_img, s), width=PREVIEW_WIDTH, caption="Preview")
                 preview = measure(preview_img, s)
                 score = preview["score"]
                 st.write(
