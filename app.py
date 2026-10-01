@@ -33,7 +33,32 @@ CAM_FLEET_IPS = {
     "HC_Camera1" : "10.76.32.119",
     "HC_Camera2" : "10.76.32.120"
 }
+from concurrent.futures import ThreadPoolExecutor
 
+@st.cache_resource
+def get_cam_session():
+    s = requests.Session()
+    s.auth = HTTPDigestAuth(CAM_USER, CAM_PASS)
+    s.verify = False  # self-signed camera certs
+    return s
+
+def fetch_snapshot(ip, resolution="640x480"):
+    try:
+        r = get_cam_session().get(
+            f"https://{ip}/axis-cgi/jpg/image.cgi",
+            params={"resolution": resolution},
+            timeout=3,
+        )
+        r.raise_for_status()
+        return r.content
+    except requests.RequestException:
+        return None
+
+def fetch_all_snapshots(resolution="640x480"):
+    with ThreadPoolExecutor(max_workers=len(CAM_FLEET_IPS)) as pool:
+        results = pool.map(lambda ip: fetch_snapshot(ip, resolution), CAM_FLEET_IPS.values())
+    return dict(zip(CAM_FLEET_IPS.keys(), results))
+    
 # 1. INITIALIZE SESSION STATE ROUTING (Tracks which screen we are viewing)
 if "current_page" not in st.session_state:
     st.session_state.current_page = "home"
@@ -80,15 +105,14 @@ if st.session_state.current_page == "home":
         # Passing credentials over HTTPS directly within an HTML5 canvas container
         PREVIEW_CAM_URL = f"https://{first_cam_ip}/axis-cgi/mjpg/video.cgi?resolution=320x240" 
         
-        preview_html = f"""
-        <html>
-            <body style="margin:0; padding:0; background-color:#1E1E1E; border-radius:8px; overflow:hidden;">
-                <img src="{PREVIEW_CAM_URL}" style="width:100%; height:140px; object-fit:cover; display:block;" 
-                     onerror="this.onerror=null; this.parentNode.innerHTML='<div style=\"color:#ff4b4b; text-align:center; padding-top:50px; font-family:sans-serif;\">⚠️ Camera Connection Locked</div>';">
-            </body>
-        </html>
-        """
-        st.components.v1.html(preview_html, height=140)
+        @st.fragment(run_every=3)
+        def home_preview():
+            img = fetch_snapshot(first_cam_ip, resolution="320x240")
+            if img:
+                st.image(img, use_container_width=True)
+            else:
+                st.caption("⚠️ Camera offline")
+        home_preview()
         # -------------------------------------------
 
 
@@ -389,57 +413,34 @@ elif st.session_state.current_page == "cameras":
     st.write("Real-time persistent feed of automation instruments.")
     st.write("---")
 
-    # --------------------------------------------------
-    # VIEW MODE A: EXPANDED SINGLE CAMERA FULLSCREEN MODE
-    # --------------------------------------------------
-    if st.session_state.maximized_cam and st.session_state.maximized_cam in CAM_FLEET_IPS:
-        cam_name = st.session_state.maximized_cam
-        cam_ip = CAM_FLEET_IPS[cam_name]
-        
-        st.subheader(f"🔍 Fullscreen View: {cam_name}")
-        stream_url = f"https://{cam_ip}/axis-cgi/mjpg/video.cgi"
-        
-        # High height setting (650px) to comfortably stretch across a modern monitor screen
-        fullscreen_html = f"""
-        <html>
-            <body style="margin:0; padding:0; background-color:black; font-family:sans-serif; overflow:hidden;">
-                <div style="position:relative; width:100%; height:640px;">
-                    <img src="{stream_url}" style="width:100%; height:100%; object-fit:contain; display:block;">
-                </div>
-            </body>
-        </html>
-        """
-        st.components.v1.html(fullscreen_html, height=650)
+    @st.fragment(run_every=2)  # refresh every 2 seconds
+    def fullscreen_view(cam_name):
+        img = fetch_snapshot(CAM_FLEET_IPS[cam_name], resolution="1280x720")
+        if img:
+            st.image(img, use_container_width=True)
+        else:
+            st.error(f"⚠️ {cam_name} Offline")
 
-    # --------------------------------------------------
-    # VIEW MODE B: STANDARD MULTI-VIEW GRID MODE
-    # --------------------------------------------------
-    else:
+    @st.fragment(run_every=2)
+    def grid_view():
+        snapshots = fetch_all_snapshots()
         cam_cols = st.columns(2)
-
-        for idx, (cam_name, cam_ip) in enumerate(CAM_FLEET_IPS.items()):
+        for idx, cam_name in enumerate(CAM_FLEET_IPS):
             with cam_cols[idx % 2]:
-                # Inline Header layout grouping with a dynamic Maximize action link button
                 head_col1, head_col2 = st.columns([3, 1])
                 with head_col1:
                     st.subheader(cam_name)
                 with head_col2:
-                    # Clicking this flags the current name in the app's persistent session router memory
                     if st.button("🔲 Fullscreen", key=f"max_{idx}", use_container_width=True):
                         st.session_state.maximized_cam = cam_name
-                        st.rerun()
-                
-                stream_url = f"https://{cam_ip}/axis-cgi/mjpg/video.cgi"
-                
-                stream_html = f"""
-                <html>
-                    <body style="margin:0; padding:0; background-color:black; font-family:sans-serif; overflow:hidden;">
-                        <div style="position:relative; width:100%; height:320px;">
-                            <img src="{stream_url}" style="width:100%; height:100%; object-fit:contain; display:block;" 
-                                 onerror="this.onerror=null; this.parentNode.innerHTML='<div style=\"color:#ff4b4b; display:flex; justify-content:center; align-items:center; height:100%; flex-direction:column;\"><span>⚠️</span><span style=\"margin-top:8px;\">{cam_name} Offline</span></div>';">
-                        </div>
-                    </body>
-                </html>
-                """
-                st.components.v1.html(stream_html, height=330)
-                st.write("") # Spacing margin layout buffer
+                        st.rerun()  # full-app rerun to switch views
+                if snapshots[cam_name]:
+                    st.image(snapshots[cam_name], use_container_width=True)
+                else:
+                    st.error(f"⚠️ {cam_name} Offline")
+
+    if st.session_state.maximized_cam in CAM_FLEET_IPS:
+        st.subheader(f"🔍 Fullscreen View: {st.session_state.maximized_cam}")
+        fullscreen_view(st.session_state.maximized_cam)
+    else:
+        grid_view()
